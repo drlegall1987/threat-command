@@ -117,7 +117,7 @@ const COUNTRIES = [
 
 const PROTOCOLS = ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'SSH', 'DNS', 'SMTP', 'FTP', 'RDP', 'SMB', 'SNMP', 'MQTT', 'MODBUS', 'TLS']
 
-const DETECTION_SOURCES = ['Wazuh SIEM', 'T-Pot Honeypot', 'FortiGate IPS', 'Meraki Firewall', 'Suricata IDS', 'Threat Feed', 'Synology Logs']
+const DETECTION_SOURCES = ['T-Pot Honeypot', 'FortiGate IPS', 'Meraki Firewall', 'Suricata IDS', 'Threat Feed', 'Synology Logs']
 
 const TABS = ['Overview', 'Threat Events', 'Honeypot', 'Intel Feeds']
 
@@ -246,10 +246,13 @@ function Sparkline({ data, color, width = 80, height = 28 }) {
   return <svg ref={ref} width={width} height={height} />
 }
 
-// ─── GLOBE COMPONENT ────────────────────────────────────────────────────────
+// ─── GLOBE COMPONENT (Interactive) ──────────────────────────────────────────
 
-function Globe({ events, theme }) {
+function Globe({ events, theme, onCountryClick, selectedCountry }) {
   const ref = useRef()
+  const rotationRef = useRef([-20, -20, 0])
+  const autoRotateRef = useRef(true)
+  const animFrameRef = useRef(null)
   const size = 360
 
   useEffect(() => {
@@ -260,7 +263,7 @@ function Globe({ events, theme }) {
     const projection = d3.geoOrthographic()
       .scale(155)
       .translate([size / 2, size / 2])
-      .rotate([-20, -20])
+      .rotate(rotationRef.current)
       .clipAngle(90)
 
     const path = d3.geoPath().projection(projection)
@@ -275,13 +278,14 @@ function Globe({ events, theme }) {
 
     svg.append('circle').attr('cx', size / 2).attr('cy', size / 2).attr('r', 165).attr('fill', 'url(#globe-glow)')
 
-    svg.append('circle')
+    const globeCircle = svg.append('circle')
       .attr('cx', size / 2).attr('cy', size / 2).attr('r', 155)
       .attr('fill', theme.surface)
       .attr('stroke', theme.border)
       .attr('stroke-width', 1)
+      .style('cursor', 'grab')
 
-    svg.append('path')
+    const graticule = svg.append('path')
       .datum(d3.geoGraticule()())
       .attr('d', path)
       .attr('fill', 'none')
@@ -289,34 +293,121 @@ function Globe({ events, theme }) {
       .attr('stroke-opacity', 0.06)
       .attr('stroke-width', 0.5)
 
+    // Load world topology for real land shapes
+    const landGroup = svg.append('g').attr('class', 'land')
+
+    // Approximate land masses with more detailed shapes
     const landRegions = [
       [-100, 45, 18], [-80, 25, 8], [-60, -15, 14], [-70, -35, 8],
       [0, 50, 12], [10, 45, 10], [25, 55, 8], [30, 0, 12], [20, 30, 6],
       [50, 25, 8], [75, 25, 12], [100, 35, 14], [105, 15, 8],
       [120, 35, 8], [135, -25, 12], [140, 38, 5],
     ]
-    landRegions.forEach(([lon, lat, r]) => {
-      const pos = projection([lon, lat])
-      if (pos) {
-        svg.append('circle')
-          .attr('cx', pos[0]).attr('cy', pos[1]).attr('r', r)
-          .attr('fill', theme.textMuted).attr('opacity', 0.15)
-      }
-    })
+
+    function renderLand() {
+      landGroup.selectAll('*').remove()
+      landRegions.forEach(([lon, lat, r]) => {
+        const pos = projection([lon, lat])
+        if (pos) {
+          landGroup.append('circle')
+            .attr('cx', pos[0]).attr('cy', pos[1]).attr('r', r)
+            .attr('fill', theme.textMuted).attr('opacity', 0.15)
+        }
+      })
+    }
+    renderLand()
+
+    // Event dots group
+    const dotsGroup = svg.append('g').attr('class', 'dots')
 
     const sevColorMap = { critical: theme.critical, high: theme.high, medium: theme.medium, low: theme.low, info: theme.info }
-    const recentEvents = events.slice(0, 50)
-    recentEvents.forEach((evt) => {
-      const pos = projection([evt.lon, evt.lat])
-      if (!pos) return
-      const color = sevColorMap[evt.severity] || theme.primary
-      svg.append('circle').attr('cx', pos[0]).attr('cy', pos[1]).attr('r', 3)
-        .attr('fill', color).attr('opacity', 0.7).attr('filter', 'url(#dot-shadow)')
-      svg.append('circle').attr('cx', pos[0]).attr('cy', pos[1]).attr('r', 6)
-        .attr('fill', 'none').attr('stroke', color).attr('opacity', 0.3).attr('stroke-width', 0.5)
-        .attr('class', 'pulse-ring')
-    })
-  }, [events, theme])
+
+    function renderDots() {
+      dotsGroup.selectAll('*').remove()
+      const recentEvents = events.slice(0, 50)
+      recentEvents.forEach((evt) => {
+        const pos = projection([evt.lon, evt.lat])
+        if (!pos) return
+        const color = sevColorMap[evt.severity] || theme.primary
+        const isSelected = selectedCountry && evt.country === selectedCountry
+
+        // Outer pulse ring
+        dotsGroup.append('circle')
+          .attr('cx', pos[0]).attr('cy', pos[1])
+          .attr('r', isSelected ? 10 : 6)
+          .attr('fill', 'none').attr('stroke', color)
+          .attr('opacity', isSelected ? 0.5 : 0.3)
+          .attr('stroke-width', isSelected ? 1 : 0.5)
+          .attr('class', 'pulse-ring')
+
+        // Core dot
+        dotsGroup.append('circle')
+          .attr('cx', pos[0]).attr('cy', pos[1])
+          .attr('r', isSelected ? 5 : 3)
+          .attr('fill', color)
+          .attr('opacity', isSelected ? 1 : 0.7)
+          .attr('filter', 'url(#dot-shadow)')
+          .style('cursor', 'pointer')
+          .on('click', () => {
+            if (onCountryClick) onCountryClick(evt.country)
+          })
+      })
+
+      // Animated new-event ring for the most recent event
+      if (recentEvents.length > 0) {
+        const newest = recentEvents[0]
+        const pos = projection([newest.lon, newest.lat])
+        if (pos) {
+          const color = sevColorMap[newest.severity] || theme.primary
+          const ring = dotsGroup.append('circle')
+            .attr('cx', pos[0]).attr('cy', pos[1]).attr('r', 4)
+            .attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2).attr('opacity', 1)
+          ring.transition().duration(1500).attr('r', 20).attr('opacity', 0).remove()
+        }
+      }
+    }
+    renderDots()
+
+    // Drag to rotate
+    const drag = d3.drag()
+      .on('start', () => {
+        autoRotateRef.current = false
+        globeCircle.style('cursor', 'grabbing')
+      })
+      .on('drag', (event) => {
+        const r = rotationRef.current
+        rotationRef.current = [r[0] + event.dx * 0.4, Math.max(-60, Math.min(60, r[1] - event.dy * 0.4)), r[2]]
+        projection.rotate(rotationRef.current)
+        graticule.attr('d', path)
+        renderLand()
+        renderDots()
+      })
+      .on('end', () => {
+        globeCircle.style('cursor', 'grab')
+        // Resume auto-rotation after 3 seconds
+        setTimeout(() => { autoRotateRef.current = true }, 3000)
+      })
+
+    svg.call(drag)
+
+    // Auto-rotation
+    function autoRotate() {
+      if (autoRotateRef.current) {
+        const r = rotationRef.current
+        rotationRef.current = [r[0] + 0.15, r[1], r[2]]
+        projection.rotate(rotationRef.current)
+        graticule.attr('d', path)
+        renderLand()
+        renderDots()
+      }
+      animFrameRef.current = requestAnimationFrame(autoRotate)
+    }
+    animFrameRef.current = requestAnimationFrame(autoRotate)
+
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+    }
+  }, [events, theme, selectedCountry])
 
   return <svg ref={ref} width={size} height={size} style={{ display: 'block' }} />
 }
@@ -353,29 +444,16 @@ function AttackBarChart({ events, theme }) {
   )
 }
 
-// ─── REAL FEED FETCHING ─────────────────────────────────────────────────────
+// ─── REAL FEED FETCHING (via Vercel API proxy) ──────────────────────────────
 
-const LIVE_FEED_URLS = {
-  cinsscore: 'https://cinsscore.com/list/ci-badguys.txt',
-  spamhausdrop: 'https://www.spamhaus.org/drop/drop.txt',
-  greensnow: 'https://blocklist.greensnow.co/greensnow.txt',
-}
-
-async function fetchFeedCounts() {
-  const results = {}
-  for (const [key, url] of Object.entries(LIVE_FEED_URLS)) {
-    try {
-      const res = await fetch(url)
-      if (res.ok) {
-        const text = await res.text()
-        const lines = text.split('\n').filter(l => l.trim() && !l.startsWith(';') && !l.startsWith('#'))
-        results[key] = lines.length
-      }
-    } catch {
-      // Feed unavailable — use simulated count
-    }
+async function fetchFeedData() {
+  try {
+    const res = await fetch('/api/feeds')
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
   }
-  return results
 }
 
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
@@ -390,7 +468,8 @@ export default function App() {
   const [clock, setClock] = useState(formatUTC())
   const [sevFilter, setSevFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [feedCounts, setFeedCounts] = useState({})
+  const [feedData, setFeedData] = useState(null)
+  const [selectedCountry, setSelectedCountry] = useState('')
   const nextId = useRef(150)
 
   const theme = dark ? DARK : LIGHT
@@ -405,9 +484,13 @@ export default function App() {
     return () => clearInterval(t)
   }, [])
 
-  // Try to fetch real feed data on mount
+  // Fetch real feed data from API on mount (refreshes every 5 min)
   useEffect(() => {
-    fetchFeedCounts().then(setFeedCounts)
+    fetchFeedData().then(d => { if (d) setFeedData(d) })
+    const interval = setInterval(() => {
+      fetchFeedData().then(d => { if (d) setFeedData(d) })
+    }, 300000)
+    return () => clearInterval(interval)
   }, [])
 
   // Live event generation
@@ -457,9 +540,10 @@ export default function App() {
 
   const countryMax = countryCounts[0]?.count || 1
 
-  // Filtered events
+  // Filtered events (includes country filter)
   const filteredEvents = useMemo(() => {
     let f = events
+    if (selectedCountry) f = f.filter(e => e.country === selectedCountry)
     if (sevFilter !== 'all') f = f.filter(e => e.severity === sevFilter)
     if (search) {
       const s = search.toLowerCase()
@@ -470,7 +554,7 @@ export default function App() {
       )
     }
     return f
-  }, [events, sevFilter, search])
+  }, [events, sevFilter, search, selectedCountry])
 
   // Honeypot sessions
   const honeypotSessions = useMemo(() => {
@@ -628,12 +712,45 @@ export default function App() {
       background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16,
       padding: 20, transition: 'all 0.3s',
     },
+    countrySelect: {
+      padding: '8px 14px', borderRadius: 8, border: `1px solid ${theme.border}`,
+      background: theme.surface, color: theme.text, fontSize: 13,
+      fontFamily: FONTS.sans, outline: 'none', cursor: 'pointer',
+      transition: 'border-color 0.2s',
+    },
   }
 
   // ─── RENDER TABS ─────────────────────────────────────────────────────────
 
   const renderOverview = () => (
     <div style={{ animation: 'fadeIn 0.3s ease' }}>
+      {/* Country Filter */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <select
+          style={s.countrySelect}
+          value={selectedCountry}
+          onChange={e => setSelectedCountry(e.target.value)}
+        >
+          <option value="">All Countries</option>
+          {COUNTRIES.sort((a, b) => a.name.localeCompare(b.name)).map(c => (
+            <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
+          ))}
+        </select>
+        {selectedCountry && (
+          <button
+            style={{ ...s.filterBtn(false), fontSize: 12 }}
+            onClick={() => setSelectedCountry('')}
+          >
+            Clear Filter
+          </button>
+        )}
+        {selectedCountry && (
+          <span style={{ fontSize: 13, color: theme.textSecondary }}>
+            {filteredEvents.length} events from {COUNTRIES.find(c => c.code === selectedCountry)?.name}
+          </span>
+        )}
+      </div>
+
       <div style={s.statsRow}>
         {[
           { label: 'Total Events', value: stats.total.toLocaleString(), data: sparkData.total, color: theme.primary },
@@ -656,7 +773,7 @@ export default function App() {
       <div style={s.threeCol}>
         <div style={s.panel}>
           <div style={s.panelTitle}>Attack Origins</div>
-          <Globe events={events} theme={theme} />
+          <Globe events={events} theme={theme} onCountryClick={setSelectedCountry} selectedCountry={selectedCountry} />
         </div>
         <div style={s.panel}>
           <div style={s.panelTitle}>Top Attack Vectors</div>
@@ -729,6 +846,12 @@ export default function App() {
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        <select style={s.countrySelect} value={selectedCountry} onChange={e => setSelectedCountry(e.target.value)}>
+          <option value="">All Countries</option>
+          {COUNTRIES.sort((a, b) => a.name.localeCompare(b.name)).map(c => (
+            <option key={c.code} value={c.code}>{c.name}</option>
+          ))}
+        </select>
         {['all', ...SEVERITY_KEYS].map(f => (
           <button key={f} style={s.filterBtn(sevFilter === f)} onClick={() => setSevFilter(f)}>
             {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
@@ -792,7 +915,7 @@ export default function App() {
             { label: 'Platform', value: 'T-Pot CE Docker' },
             { label: 'Honeypots', value: 'Cowrie, Dionaea, Conpot, Heralding' },
             { label: 'VPS Provider', value: 'Hetzner' },
-            { label: 'SIEM Link', value: 'Wazuh Agent + Logstash' },
+            { label: 'Log Pipeline', value: 'Logstash + Elasticsearch' },
           ].map((item, i) => (
             <div key={i}>
               <div style={{ fontSize: 11, color: theme.textMuted, textTransform: 'uppercase', marginBottom: 4, letterSpacing: 0.5, fontWeight: 600 }}>{item.label}</div>
@@ -839,15 +962,38 @@ export default function App() {
   )
 
   const renderIntelFeeds = () => {
+    // Merge real API data with local feed list
+    const apiFeedMap = {}
+    if (feedData?.feeds) {
+      feedData.feeds.forEach(f => { apiFeedMap[f.id] = f })
+    }
     const simFeedCounts = {}
     events.forEach(e => { simFeedCounts[e.feed] = (simFeedCounts[e.feed] || 0) + 1 })
 
     return (
       <div style={{ animation: 'fadeIn 0.3s ease' }}>
+        {feedData && (
+          <div style={{ ...s.panel, marginBottom: 20, display: 'flex', gap: 32, alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 11, color: theme.textMuted, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5, marginBottom: 4 }}>Total Live IoCs</div>
+              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: FONTS.mono, color: theme.primary }}>{feedData.totalIoCs.toLocaleString()}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: theme.textMuted, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5, marginBottom: 4 }}>Active Feeds</div>
+              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: FONTS.mono, color: theme.low }}>{feedData.feeds.filter(f => f.status === 'active').length}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: theme.textMuted, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5, marginBottom: 4 }}>Last Sync</div>
+              <div style={{ fontSize: 14, fontWeight: 500, fontFamily: FONTS.mono, color: theme.textSecondary }}>{new Date(feedData.timestamp).toLocaleTimeString()}</div>
+            </div>
+          </div>
+        )}
         <div style={s.feedGrid}>
           {FEEDS.map(feed => {
-            const realCount = feedCounts[feed.id]
-            const displayCount = realCount || simFeedCounts[feed.name] || rand(10, 200)
+            const apiData = apiFeedMap[feed.id]
+            const isLive = apiData?.status === 'active'
+            const displayCount = isLive ? apiData.count : (simFeedCounts[feed.name] || rand(10, 200))
+            const statusColor = isLive ? theme.low : (apiData?.status === 'error' ? theme.critical : theme.textMuted)
             return (
               <div key={feed.id} style={s.feedCard} className="card-hover">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
@@ -863,15 +1009,17 @@ export default function App() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontSize: 20, fontWeight: 700, fontFamily: FONTS.mono, color: theme.text }}>
-                      {realCount ? realCount.toLocaleString() : displayCount}
+                      {displayCount != null ? displayCount.toLocaleString() : '\u2014'}
                     </div>
-                    <div style={{ fontSize: 11, color: theme.textMuted }}>{realCount ? 'live IoCs' : 'events'}</div>
+                    <div style={{ fontSize: 11, color: theme.textMuted }}>{isLive ? 'live IoCs' : 'events'}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 11, color: theme.low, fontWeight: 600 }}>ACTIVE</div>
-                    <div style={{ fontSize: 10, color: theme.textMuted, fontFamily: FONTS.mono }}>
-                      {rand(1, 45)}m ago
-                    </div>
+                    <div style={{ fontSize: 11, color: statusColor, fontWeight: 600 }}>{isLive ? 'LIVE' : (apiData?.status === 'error' ? 'ERROR' : 'ACTIVE')}</div>
+                    {apiData?.lastSync && (
+                      <div style={{ fontSize: 10, color: theme.textMuted, fontFamily: FONTS.mono }}>
+                        {new Date(apiData.lastSync).toLocaleTimeString()}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -959,9 +1107,8 @@ export default function App() {
             <span style={{ fontSize: 14, fontWeight: 500, color: theme.navText }}>Threat Dashboard</span>
           </div>
           <div style={s.headerRight}>
-            <span style={s.statusLabel}><span style={s.statusDot(theme.low)} />Wazuh</span>
             <span style={s.statusLabel}><span style={s.statusDot(theme.low)} />T-Pot</span>
-            <span style={s.statusLabel}><span style={s.statusDot(theme.low)} />{FEEDS.length} Feeds</span>
+            <span style={s.statusLabel}><span style={s.statusDot(theme.low)} />{feedData ? feedData.feeds.filter(f => f.status === 'active').length : FEEDS.length} Feeds</span>
             <button style={s.toggleBtn} onClick={() => setLive(!live)}>
               {live ? '\u25CF LIVE' : '\u25CB PAUSED'}
             </button>
