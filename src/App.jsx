@@ -237,6 +237,62 @@ const COUNTRIES = [
   { code: 'YE', name: 'Yemen', lat: 15.5, lon: 48.5 },
   { code: 'ZM', name: 'Zambia', lat: -13.1, lon: 27.8 },
   { code: 'ZW', name: 'Zimbabwe', lat: -19.0, lon: 29.1 },
+  // Caribbean
+  { code: 'AG', name: 'Antigua & Barbuda', lat: 17.0, lon: -61.7 },
+  { code: 'BS', name: 'Bahamas', lat: 25.0, lon: -77.3 },
+  { code: 'BB', name: 'Barbados', lat: 13.1, lon: -59.6 },
+  { code: 'DM', name: 'Dominica', lat: 15.4, lon: -61.3 },
+  { code: 'GD', name: 'Grenada', lat: 12.1, lon: -61.6 },
+  { code: 'GY', name: 'Guyana', lat: 4.8, lon: -58.9 },
+  { code: 'KN', name: 'Saint Kitts & Nevis', lat: 17.3, lon: -62.7 },
+  { code: 'LC', name: 'Saint Lucia', lat: 13.9, lon: -60.9 },
+  { code: 'VC', name: 'Saint Vincent & Grenadines', lat: 12.9, lon: -61.2 },
+  { code: 'SR', name: 'Suriname', lat: 3.9, lon: -56.0 },
+  { code: 'TT', name: 'Trinidad & Tobago', lat: 10.6, lon: -61.2 },
+  { code: 'PR', name: 'Puerto Rico', lat: 18.2, lon: -66.5 },
+  // Pacific
+  { code: 'FJ', name: 'Fiji', lat: -17.7, lon: 178.0 },
+  { code: 'KI', name: 'Kiribati', lat: 1.8, lon: -157.3 },
+  { code: 'MH', name: 'Marshall Islands', lat: 7.1, lon: 171.1 },
+  { code: 'FM', name: 'Micronesia', lat: 7.4, lon: 150.5 },
+  { code: 'NR', name: 'Nauru', lat: -0.5, lon: 166.9 },
+  { code: 'PW', name: 'Palau', lat: 7.5, lon: 134.5 },
+  { code: 'PG', name: 'Papua New Guinea', lat: -6.3, lon: 143.9 },
+  { code: 'WS', name: 'Samoa', lat: -13.7, lon: -172.1 },
+  { code: 'SB', name: 'Solomon Islands', lat: -9.6, lon: 160.1 },
+  { code: 'TO', name: 'Tonga', lat: -21.1, lon: -175.1 },
+  { code: 'TV', name: 'Tuvalu', lat: -7.1, lon: 179.1 },
+  { code: 'VU', name: 'Vanuatu', lat: -15.3, lon: 166.9 },
+  // Africa (missing)
+  { code: 'CV', name: 'Cabo Verde', lat: 16.0, lon: -24.0 },
+  { code: 'KM', name: 'Comoros', lat: -11.8, lon: 43.8 },
+  { code: 'DJ', name: 'Djibouti', lat: 11.8, lon: 42.5 },
+  { code: 'GQ', name: 'Equatorial Guinea', lat: 1.6, lon: 10.2 },
+  { code: 'ER', name: 'Eritrea', lat: 15.1, lon: 39.7 },
+  { code: 'SZ', name: 'Eswatini', lat: -26.5, lon: 31.4 },
+  { code: 'GM', name: 'Gambia', lat: 13.4, lon: -15.3 },
+  { code: 'GW', name: 'Guinea-Bissau', lat: 11.8, lon: -15.1 },
+  { code: 'LS', name: 'Lesotho', lat: -29.6, lon: 28.2 },
+  { code: 'LR', name: 'Liberia', lat: 6.4, lon: -9.4 },
+  { code: 'MW', name: 'Malawi', lat: -13.2, lon: 34.3 },
+  { code: 'MU', name: 'Mauritius', lat: -20.3, lon: 57.5 },
+  { code: 'ST', name: 'S\u00e3o Tom\u00e9 & Pr\u00edncipe', lat: 0.1, lon: 6.6 },
+  { code: 'SC', name: 'Seychelles', lat: -4.6, lon: 55.4 },
+  { code: 'SL', name: 'Sierra Leone', lat: 8.4, lon: -11.7 },
+  { code: 'SS', name: 'South Sudan', lat: 6.8, lon: 31.6 },
+  { code: 'TG', name: 'Togo', lat: 8.6, lon: 0.8 },
+  { code: 'BI', name: 'Burundi', lat: -3.3, lon: 29.9 },
+  // Europe (missing)
+  { code: 'XK', name: 'Kosovo', lat: 42.6, lon: 20.9 },
+  { code: 'LI', name: 'Liechtenstein', lat: 47.1, lon: 9.5 },
+  { code: 'MC', name: 'Monaco', lat: 43.7, lon: 7.4 },
+  { code: 'SM', name: 'San Marino', lat: 43.9, lon: 12.4 },
+  { code: 'VA', name: 'Vatican City', lat: 41.9, lon: 12.4 },
+  // Asia/Other (missing)
+  { code: 'MV', name: 'Maldives', lat: 3.2, lon: 73.2 },
+  { code: 'TL', name: 'Timor-Leste', lat: -8.8, lon: 125.7 },
+  { code: 'PS', name: 'Palestine', lat: 31.9, lon: 35.2 },
+  { code: 'MO', name: 'Macau', lat: 22.1, lon: 113.5 },
 ]
 
 const PROTOCOLS = ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'SSH', 'DNS', 'SMTP', 'FTP', 'RDP', 'SMB', 'SNMP', 'MQTT', 'MODBUS', 'TLS']
@@ -383,7 +439,7 @@ async function loadWorldData() {
   return worldDataCache
 }
 
-function Globe({ events, theme, onCountryClick, selectedCountry }) {
+function Globe({ events, theme, onCountryClick, selectedCountry, feedGeoIPs }) {
   const ref = useRef()
   const rotationRef = useRef([-20, -20, 0])
   const worldRef = useRef(null)
@@ -550,6 +606,23 @@ function Globe({ events, theme, onCountryClick, selectedCountry }) {
           .on('click', () => { if (onCountryClick) onCountryClick(evt.country) })
       })
 
+      // Real feed geolocated IPs (from API)
+      if (feedGeoIPs && feedGeoIPs.length > 0) {
+        feedGeoIPs.forEach(geo => {
+          const pos = projection([geo.lon, geo.lat])
+          if (!pos) return
+          const isSelected = selectedCountry && geo.countryCode === selectedCountry
+          if (!isSelected && selectedCountry) return
+          dotsGroup.append('circle')
+            .attr('cx', pos[0]).attr('cy', pos[1])
+            .attr('r', isSelected ? 3.5 : 2)
+            .attr('fill', theme.critical)
+            .attr('opacity', isSelected ? 0.9 : 0.4)
+            .style('cursor', 'pointer')
+            .on('click', () => { if (onCountryClick) onCountryClick(geo.countryCode) })
+        })
+      }
+
       // Destination marker (your network)
       const dstPos = projection(DEST_COORDS)
       if (dstPos) {
@@ -601,7 +674,7 @@ function Globe({ events, theme, onCountryClick, selectedCountry }) {
     svg.call(drag)
 
     return () => {}
-  }, [events, theme, selectedCountry, ref.current?.getAttribute('data-loaded')])
+  }, [events, theme, selectedCountry, feedGeoIPs, ref.current?.getAttribute('data-loaded')])
 
   return <svg ref={ref} width={size} height={size} style={{ display: 'block', margin: '0 auto' }} />
 }
@@ -967,7 +1040,7 @@ export default function App() {
       <div style={s.threeCol}>
         <div style={s.panel}>
           <div style={s.panelTitle}>Attack Origins</div>
-          <Globe events={events} theme={theme} onCountryClick={setSelectedCountry} selectedCountry={selectedCountry} />
+          <Globe events={events} theme={theme} onCountryClick={setSelectedCountry} selectedCountry={selectedCountry} feedGeoIPs={feedData?.geolocatedIPs} />
         </div>
         <div style={s.panel}>
           <div style={s.panelTitle}>Top Attack Vectors</div>
@@ -1164,8 +1237,38 @@ export default function App() {
     const simFeedCounts = {}
     events.forEach(e => { simFeedCounts[e.feed] = (simFeedCounts[e.feed] || 0) + 1 })
 
+    // Country-filtered IoCs from real feed data
+    const countryIoCs = selectedCountry && feedData?.countryBreakdown
+      ? feedData.countryBreakdown.find(c => c.code === selectedCountry)
+      : null
+
     return (
       <div style={{ animation: 'fadeIn 0.3s ease' }}>
+        {/* Country filter for Intel Feeds */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <select style={s.countrySelect} value={selectedCountry} onChange={e => setSelectedCountry(e.target.value)}>
+            <option value="">All Countries</option>
+            {COUNTRIES.sort((a, b) => a.name.localeCompare(b.name)).map(c => (
+              <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
+            ))}
+          </select>
+          {selectedCountry && (
+            <button style={{ ...s.filterBtn(false), fontSize: 12 }} onClick={() => setSelectedCountry('')}>
+              Clear Filter
+            </button>
+          )}
+          {selectedCountry && countryIoCs && (
+            <span style={{ fontSize: 13, color: theme.textSecondary }}>
+              {countryIoCs.count} malicious IPs from {countryIoCs.name}
+            </span>
+          )}
+          {selectedCountry && !countryIoCs && feedData && (
+            <span style={{ fontSize: 13, color: theme.textMuted }}>
+              No feed IoCs geolocated to {COUNTRIES.find(c => c.code === selectedCountry)?.name || selectedCountry}
+            </span>
+          )}
+        </div>
+
         {feedData && (
           <div style={{ ...s.panel, marginBottom: 20, display: 'flex', gap: 32, alignItems: 'center' }}>
             <div>
@@ -1186,7 +1289,13 @@ export default function App() {
           {FEEDS.map(feed => {
             const apiData = apiFeedMap[feed.id]
             const isLive = apiData?.status === 'active'
-            const displayCount = isLive ? apiData.count : (simFeedCounts[feed.name] || rand(10, 200))
+            // When country is selected, show country-specific count from that feed
+            const countryCount = selectedCountry && apiData?.countries
+              ? apiData.countries.find(c => c.code === selectedCountry)?.count
+              : null
+            const displayCount = countryCount != null
+              ? countryCount
+              : (isLive ? apiData.count : (simFeedCounts[feed.name] || rand(10, 200)))
             const statusColor = isLive ? theme.low : (apiData?.status === 'error' ? theme.critical : theme.textMuted)
             return (
               <div key={feed.id} style={s.feedCard} className="card-hover">
@@ -1205,7 +1314,7 @@ export default function App() {
                     <div style={{ fontSize: 20, fontWeight: 700, fontFamily: FONTS.mono, color: theme.text }}>
                       {displayCount != null ? displayCount.toLocaleString() : '\u2014'}
                     </div>
-                    <div style={{ fontSize: 11, color: theme.textMuted }}>{isLive ? 'live IoCs' : 'events'}</div>
+                    <div style={{ fontSize: 11, color: theme.textMuted }}>{countryCount != null ? `IoCs in ${selectedCountry}` : (isLive ? 'live IoCs' : 'events')}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 11, color: statusColor, fontWeight: 600 }}>{isLive ? 'LIVE' : (apiData?.status === 'error' ? 'ERROR' : 'ACTIVE')}</div>
