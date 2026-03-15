@@ -5,7 +5,7 @@ import * as d3 from 'd3'
 
 const FONTS = {
   sans: "Poppins, 'Poppins Fallback', system-ui, sans-serif",
-  mono: "'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace",
+  mono: "'IBM Plex Mono', 'IBM Plex Mono Fallback', 'SF Mono', monospace",
 }
 
 const BRAND = {
@@ -213,11 +213,15 @@ function LogoIcon({ dark }) {
   return (
     <svg viewBox="0 0 2000 2000" width={40} height={40} style={{ display: 'block' }}>
       <polygon
-        points="873,352 1217,352 597,1648 253,1648"
+        points="892.9,989.61 792.23,1212.63 580.92,1212.63 723.61,896.55 934.91,896.55"
         fill={BRAND.blue}
       />
       <path
-        d="M800,352 L1100,352 C1500,352 1750,650 1750,1000 C1750,1350 1500,1648 1100,1648 L800,1648 L800,352 Z M950,520 L950,1480 L1100,1480 C1400,1480 1580,1250 1580,1000 C1580,750 1400,520 1100,520 L950,520 Z"
+        d="M1115.89,1196.06l-94.42,209.18h-316.2l86.95-192.61h241.28c22.19,0,43.34-3.37,63.24-9.55C1103.25,1201.07,1109.67,1198.71,1115.89,1196.06z"
+        fill={dark ? '#ffffff' : BRAND.navy}
+      />
+      <path
+        d="M1438.74,1000c0,41.73-6.38,82.34-18.26,120.46c-11.88,38.16-29.17,73.83-51.04,106.17c-43.66,64.6-105.33,115.88-178.2,146.7c-33.35,14.12-69.06,23.92-106.21,28.65l137.39-304.36c2.57-4.86,9.87-22.03,10.07-22.55c8.79-23.27,13.6-48.43,13.64-75.08c-0.04-22.23-3.37-43.38-9.55-63.28c-6.22-19.9-15.25-38.56-26.72-55.54c-22.95-33.99-55.62-61.07-93.66-77.16c-25.36-10.71-53.09-16.65-82.7-16.65H561.26l95.58-192.61h376.67c41.73,0,82.3,6.34,120.46,18.22c38.12,11.88,73.83,29.21,106.17,51.04c64.6,43.66,115.89,105.37,146.7,178.2C1427.39,890.78,1438.74,944.3,1438.74,1000z"
         fill={dark ? '#ffffff' : BRAND.navy}
       />
     </svg>
@@ -913,7 +917,7 @@ export default function App() {
   return (
     <div style={s.app}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Poppins:wght@400;500;600;700&display=swap');
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: translateY(0); }
