@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import * as d3 from 'd3'
+import * as topojson from 'topojson-client'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
@@ -88,31 +89,154 @@ const ATTACK_TYPES = [
 ]
 
 const COUNTRIES = [
-  { code: 'US', name: 'United States', lat: 39.8, lon: -98.5 },
-  { code: 'CN', name: 'China', lat: 35.8, lon: 104.1 },
-  { code: 'RU', name: 'Russia', lat: 61.5, lon: 105.3 },
-  { code: 'DE', name: 'Germany', lat: 51.1, lon: 10.4 },
-  { code: 'BR', name: 'Brazil', lat: -14.2, lon: -51.9 },
-  { code: 'IN', name: 'India', lat: 20.5, lon: 78.9 },
-  { code: 'KR', name: 'South Korea', lat: 35.9, lon: 127.7 },
-  { code: 'NL', name: 'Netherlands', lat: 52.1, lon: 5.2 },
-  { code: 'FR', name: 'France', lat: 46.2, lon: 2.2 },
-  { code: 'GB', name: 'United Kingdom', lat: 55.3, lon: -3.4 },
-  { code: 'UA', name: 'Ukraine', lat: 48.3, lon: 31.1 },
-  { code: 'IR', name: 'Iran', lat: 32.4, lon: 53.6 },
-  { code: 'VN', name: 'Vietnam', lat: 14.0, lon: 108.2 },
-  { code: 'JP', name: 'Japan', lat: 36.2, lon: 138.2 },
-  { code: 'ID', name: 'Indonesia', lat: -0.7, lon: 113.9 },
-  { code: 'PK', name: 'Pakistan', lat: 30.3, lon: 69.3 },
-  { code: 'TW', name: 'Taiwan', lat: 23.6, lon: 120.9 },
-  { code: 'TH', name: 'Thailand', lat: 15.8, lon: 100.9 },
-  { code: 'TR', name: 'Turkey', lat: 38.9, lon: 35.2 },
-  { code: 'RO', name: 'Romania', lat: 45.9, lon: 24.9 },
-  { code: 'NG', name: 'Nigeria', lat: 9.0, lon: 8.6 },
-  { code: 'PH', name: 'Philippines', lat: 12.8, lon: 121.7 },
+  { code: 'AF', name: 'Afghanistan', lat: 33.9, lon: 67.7 },
+  { code: 'AL', name: 'Albania', lat: 41.1, lon: 20.1 },
+  { code: 'DZ', name: 'Algeria', lat: 28.0, lon: 1.6 },
+  { code: 'AO', name: 'Angola', lat: -11.2, lon: 17.8 },
   { code: 'AR', name: 'Argentina', lat: -38.4, lon: -63.6 },
+  { code: 'AM', name: 'Armenia', lat: 40.0, lon: 45.0 },
+  { code: 'AU', name: 'Australia', lat: -25.2, lon: 133.7 },
+  { code: 'AT', name: 'Austria', lat: 47.5, lon: 14.5 },
+  { code: 'AZ', name: 'Azerbaijan', lat: 40.1, lon: 47.5 },
+  { code: 'BH', name: 'Bahrain', lat: 26.0, lon: 50.5 },
+  { code: 'BD', name: 'Bangladesh', lat: 23.6, lon: 90.3 },
+  { code: 'BY', name: 'Belarus', lat: 53.7, lon: 27.9 },
+  { code: 'BE', name: 'Belgium', lat: 50.5, lon: 4.4 },
+  { code: 'BZ', name: 'Belize', lat: 17.1, lon: -88.4 },
+  { code: 'BJ', name: 'Benin', lat: 9.3, lon: 2.3 },
+  { code: 'BT', name: 'Bhutan', lat: 27.5, lon: 90.4 },
+  { code: 'BO', name: 'Bolivia', lat: -16.2, lon: -63.5 },
+  { code: 'BA', name: 'Bosnia & Herzegovina', lat: 43.9, lon: 17.6 },
+  { code: 'BW', name: 'Botswana', lat: -22.3, lon: 24.6 },
+  { code: 'BR', name: 'Brazil', lat: -14.2, lon: -51.9 },
+  { code: 'BN', name: 'Brunei', lat: 4.5, lon: 114.7 },
+  { code: 'BG', name: 'Bulgaria', lat: 42.7, lon: 25.4 },
+  { code: 'BF', name: 'Burkina Faso', lat: 12.3, lon: -1.5 },
+  { code: 'KH', name: 'Cambodia', lat: 12.5, lon: 104.9 },
+  { code: 'CM', name: 'Cameroon', lat: 7.3, lon: 12.3 },
+  { code: 'CA', name: 'Canada', lat: 56.1, lon: -106.3 },
+  { code: 'CF', name: 'Central African Republic', lat: 6.6, lon: 20.9 },
+  { code: 'TD', name: 'Chad', lat: 15.4, lon: 18.7 },
+  { code: 'CL', name: 'Chile', lat: -35.6, lon: -71.2 },
+  { code: 'CN', name: 'China', lat: 35.8, lon: 104.1 },
+  { code: 'CO', name: 'Colombia', lat: 4.5, lon: -74.2 },
+  { code: 'CD', name: 'Congo (DRC)', lat: -4.0, lon: 21.7 },
+  { code: 'CG', name: 'Congo (Republic)', lat: -0.2, lon: 15.8 },
+  { code: 'CR', name: 'Costa Rica', lat: 9.7, lon: -83.7 },
+  { code: 'CI', name: "C\u00f4te d'Ivoire", lat: 7.5, lon: -5.5 },
+  { code: 'HR', name: 'Croatia', lat: 45.1, lon: 15.2 },
+  { code: 'CU', name: 'Cuba', lat: 21.5, lon: -77.7 },
+  { code: 'CY', name: 'Cyprus', lat: 35.1, lon: 33.4 },
+  { code: 'CZ', name: 'Czech Republic', lat: 49.8, lon: 15.4 },
+  { code: 'DK', name: 'Denmark', lat: 56.2, lon: 9.5 },
+  { code: 'DO', name: 'Dominican Republic', lat: 18.7, lon: -70.1 },
+  { code: 'EC', name: 'Ecuador', lat: -1.8, lon: -78.1 },
   { code: 'EG', name: 'Egypt', lat: 26.8, lon: 30.8 },
+  { code: 'SV', name: 'El Salvador', lat: 13.7, lon: -88.8 },
+  { code: 'EE', name: 'Estonia', lat: 58.5, lon: 25.0 },
+  { code: 'ET', name: 'Ethiopia', lat: 9.1, lon: 40.4 },
+  { code: 'FI', name: 'Finland', lat: 61.9, lon: 25.7 },
+  { code: 'FR', name: 'France', lat: 46.2, lon: 2.2 },
+  { code: 'GA', name: 'Gabon', lat: -0.8, lon: 11.6 },
+  { code: 'GE', name: 'Georgia', lat: 42.3, lon: 43.3 },
+  { code: 'DE', name: 'Germany', lat: 51.1, lon: 10.4 },
+  { code: 'GH', name: 'Ghana', lat: 7.9, lon: -1.0 },
+  { code: 'GR', name: 'Greece', lat: 39.0, lon: 21.8 },
+  { code: 'GT', name: 'Guatemala', lat: 15.7, lon: -90.2 },
+  { code: 'GN', name: 'Guinea', lat: 9.9, lon: -9.6 },
+  { code: 'HT', name: 'Haiti', lat: 18.9, lon: -72.2 },
+  { code: 'HN', name: 'Honduras', lat: 15.1, lon: -86.2 },
+  { code: 'HK', name: 'Hong Kong', lat: 22.3, lon: 114.1 },
+  { code: 'HU', name: 'Hungary', lat: 47.1, lon: 19.5 },
+  { code: 'IS', name: 'Iceland', lat: 64.9, lon: -19.0 },
+  { code: 'IN', name: 'India', lat: 20.5, lon: 78.9 },
+  { code: 'ID', name: 'Indonesia', lat: -0.7, lon: 113.9 },
+  { code: 'IR', name: 'Iran', lat: 32.4, lon: 53.6 },
+  { code: 'IQ', name: 'Iraq', lat: 33.2, lon: 43.6 },
+  { code: 'IE', name: 'Ireland', lat: 53.4, lon: -8.2 },
+  { code: 'IL', name: 'Israel', lat: 31.0, lon: 34.8 },
+  { code: 'IT', name: 'Italy', lat: 41.8, lon: 12.5 },
+  { code: 'JM', name: 'Jamaica', lat: 18.1, lon: -77.2 },
+  { code: 'JP', name: 'Japan', lat: 36.2, lon: 138.2 },
+  { code: 'JO', name: 'Jordan', lat: 30.5, lon: 36.2 },
+  { code: 'KZ', name: 'Kazakhstan', lat: 48.0, lon: 67.9 },
+  { code: 'KE', name: 'Kenya', lat: -0.0, lon: 37.9 },
+  { code: 'KP', name: 'North Korea', lat: 40.3, lon: 127.5 },
+  { code: 'KR', name: 'South Korea', lat: 35.9, lon: 127.7 },
+  { code: 'KW', name: 'Kuwait', lat: 29.3, lon: 47.4 },
+  { code: 'KG', name: 'Kyrgyzstan', lat: 41.2, lon: 74.7 },
+  { code: 'LA', name: 'Laos', lat: 19.8, lon: 102.4 },
+  { code: 'LV', name: 'Latvia', lat: 56.8, lon: 24.6 },
+  { code: 'LB', name: 'Lebanon', lat: 33.8, lon: 35.8 },
+  { code: 'LY', name: 'Libya', lat: 26.3, lon: 17.2 },
+  { code: 'LT', name: 'Lithuania', lat: 55.1, lon: 23.8 },
+  { code: 'LU', name: 'Luxembourg', lat: 49.8, lon: 6.1 },
+  { code: 'MG', name: 'Madagascar', lat: -18.7, lon: 46.8 },
+  { code: 'MY', name: 'Malaysia', lat: 4.2, lon: 101.9 },
+  { code: 'ML', name: 'Mali', lat: 17.5, lon: -3.9 },
+  { code: 'MT', name: 'Malta', lat: 35.9, lon: 14.3 },
+  { code: 'MR', name: 'Mauritania', lat: 21.0, lon: -10.9 },
   { code: 'MX', name: 'Mexico', lat: 23.6, lon: -102.5 },
+  { code: 'MD', name: 'Moldova', lat: 47.4, lon: 28.3 },
+  { code: 'MN', name: 'Mongolia', lat: 46.8, lon: 103.8 },
+  { code: 'ME', name: 'Montenegro', lat: 42.7, lon: 19.3 },
+  { code: 'MA', name: 'Morocco', lat: 31.7, lon: -7.0 },
+  { code: 'MZ', name: 'Mozambique', lat: -18.6, lon: 35.5 },
+  { code: 'MM', name: 'Myanmar', lat: 21.9, lon: 95.9 },
+  { code: 'NA', name: 'Namibia', lat: -22.9, lon: 18.4 },
+  { code: 'NP', name: 'Nepal', lat: 28.3, lon: 84.1 },
+  { code: 'NL', name: 'Netherlands', lat: 52.1, lon: 5.2 },
+  { code: 'NZ', name: 'New Zealand', lat: -40.9, lon: 174.8 },
+  { code: 'NI', name: 'Nicaragua', lat: 12.8, lon: -85.2 },
+  { code: 'NE', name: 'Niger', lat: 17.6, lon: 8.0 },
+  { code: 'NG', name: 'Nigeria', lat: 9.0, lon: 8.6 },
+  { code: 'MK', name: 'North Macedonia', lat: 41.5, lon: 21.7 },
+  { code: 'NO', name: 'Norway', lat: 60.4, lon: 8.4 },
+  { code: 'OM', name: 'Oman', lat: 21.4, lon: 55.9 },
+  { code: 'PK', name: 'Pakistan', lat: 30.3, lon: 69.3 },
+  { code: 'PA', name: 'Panama', lat: 8.5, lon: -80.7 },
+  { code: 'PY', name: 'Paraguay', lat: -23.4, lon: -58.4 },
+  { code: 'PE', name: 'Peru', lat: -9.1, lon: -75.0 },
+  { code: 'PH', name: 'Philippines', lat: 12.8, lon: 121.7 },
+  { code: 'PL', name: 'Poland', lat: 51.9, lon: 19.1 },
+  { code: 'PT', name: 'Portugal', lat: 39.3, lon: -8.2 },
+  { code: 'QA', name: 'Qatar', lat: 25.3, lon: 51.1 },
+  { code: 'RO', name: 'Romania', lat: 45.9, lon: 24.9 },
+  { code: 'RU', name: 'Russia', lat: 61.5, lon: 105.3 },
+  { code: 'RW', name: 'Rwanda', lat: -1.9, lon: 29.8 },
+  { code: 'SA', name: 'Saudi Arabia', lat: 23.8, lon: 45.0 },
+  { code: 'SN', name: 'Senegal', lat: 14.4, lon: -14.4 },
+  { code: 'RS', name: 'Serbia', lat: 44.0, lon: 21.0 },
+  { code: 'SG', name: 'Singapore', lat: 1.3, lon: 103.8 },
+  { code: 'SK', name: 'Slovakia', lat: 48.6, lon: 19.6 },
+  { code: 'SI', name: 'Slovenia', lat: 46.1, lon: 14.9 },
+  { code: 'SO', name: 'Somalia', lat: 5.1, lon: 46.1 },
+  { code: 'ZA', name: 'South Africa', lat: -30.5, lon: 22.9 },
+  { code: 'ES', name: 'Spain', lat: 40.4, lon: -3.7 },
+  { code: 'LK', name: 'Sri Lanka', lat: 7.8, lon: 80.7 },
+  { code: 'SD', name: 'Sudan', lat: 12.8, lon: 30.2 },
+  { code: 'SE', name: 'Sweden', lat: 60.1, lon: 18.6 },
+  { code: 'CH', name: 'Switzerland', lat: 46.8, lon: 8.2 },
+  { code: 'SY', name: 'Syria', lat: 34.8, lon: 38.9 },
+  { code: 'TW', name: 'Taiwan', lat: 23.6, lon: 120.9 },
+  { code: 'TJ', name: 'Tajikistan', lat: 38.8, lon: 71.2 },
+  { code: 'TZ', name: 'Tanzania', lat: -6.3, lon: 34.8 },
+  { code: 'TH', name: 'Thailand', lat: 15.8, lon: 100.9 },
+  { code: 'TN', name: 'Tunisia', lat: 33.8, lon: 9.5 },
+  { code: 'TR', name: 'Turkey', lat: 38.9, lon: 35.2 },
+  { code: 'TM', name: 'Turkmenistan', lat: 38.9, lon: 59.5 },
+  { code: 'UG', name: 'Uganda', lat: 1.3, lon: 32.2 },
+  { code: 'UA', name: 'Ukraine', lat: 48.3, lon: 31.1 },
+  { code: 'AE', name: 'United Arab Emirates', lat: 23.4, lon: 53.8 },
+  { code: 'GB', name: 'United Kingdom', lat: 55.3, lon: -3.4 },
+  { code: 'US', name: 'United States', lat: 39.8, lon: -98.5 },
+  { code: 'UY', name: 'Uruguay', lat: -32.5, lon: -55.7 },
+  { code: 'UZ', name: 'Uzbekistan', lat: 41.3, lon: 64.5 },
+  { code: 'VE', name: 'Venezuela', lat: 6.4, lon: -66.5 },
+  { code: 'VN', name: 'Vietnam', lat: 14.0, lon: 108.2 },
+  { code: 'YE', name: 'Yemen', lat: 15.5, lon: 48.5 },
+  { code: 'ZM', name: 'Zambia', lat: -13.1, lon: 27.8 },
+  { code: 'ZW', name: 'Zimbabwe', lat: -19.0, lon: 29.1 },
 ]
 
 const PROTOCOLS = ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'SSH', 'DNS', 'SMTP', 'FTP', 'RDP', 'SMB', 'SNMP', 'MQTT', 'MODBUS', 'TLS']
@@ -246,14 +370,35 @@ function Sparkline({ data, color, width = 80, height = 28 }) {
   return <svg ref={ref} width={width} height={height} />
 }
 
-// ─── GLOBE COMPONENT (Interactive) ──────────────────────────────────────────
+// ─── GLOBE COMPONENT (Real Geography + Attack Arcs) ─────────────────────────
+
+// Destination point for attack lines (user's network — US East Coast)
+const DEST_COORDS = [-77.0, 38.9] // Washington DC area
+
+let worldDataCache = null
+async function loadWorldData() {
+  if (worldDataCache) return worldDataCache
+  const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+  worldDataCache = await res.json()
+  return worldDataCache
+}
 
 function Globe({ events, theme, onCountryClick, selectedCountry }) {
   const ref = useRef()
   const rotationRef = useRef([-20, -20, 0])
   const autoRotateRef = useRef(true)
   const animFrameRef = useRef(null)
-  const size = 360
+  const worldRef = useRef(null)
+  const size = 400
+
+  // Load world data once
+  useEffect(() => {
+    loadWorldData().then(data => {
+      worldRef.current = data
+      // Force re-render by updating ref — the main effect will pick it up
+      if (ref.current) ref.current.setAttribute('data-loaded', 'true')
+    })
+  }, [])
 
   useEffect(() => {
     if (!ref.current) return
@@ -261,112 +406,182 @@ function Globe({ events, theme, onCountryClick, selectedCountry }) {
     svg.selectAll('*').remove()
 
     const projection = d3.geoOrthographic()
-      .scale(155)
+      .scale(180)
       .translate([size / 2, size / 2])
       .rotate(rotationRef.current)
       .clipAngle(90)
 
     const path = d3.geoPath().projection(projection)
 
+    // Defs
     const defs = svg.append('defs')
     const radial = defs.append('radialGradient').attr('id', 'globe-glow')
-    radial.append('stop').attr('offset', '0%').attr('stop-color', theme.primary).attr('stop-opacity', 0.12)
+    radial.append('stop').attr('offset', '0%').attr('stop-color', theme.primary).attr('stop-opacity', 0.15)
     radial.append('stop').attr('offset', '100%').attr('stop-color', theme.primary).attr('stop-opacity', 0)
 
-    const filter = defs.append('filter').attr('id', 'dot-shadow')
-    filter.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', 2)
+    const dotFilter = defs.append('filter').attr('id', 'dot-glow')
+    dotFilter.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', 3)
 
-    svg.append('circle').attr('cx', size / 2).attr('cy', size / 2).attr('r', 165).attr('fill', 'url(#globe-glow)')
+    // Ocean glow
+    svg.append('circle').attr('cx', size / 2).attr('cy', size / 2).attr('r', 192).attr('fill', 'url(#globe-glow)')
 
+    // Ocean sphere
     const globeCircle = svg.append('circle')
-      .attr('cx', size / 2).attr('cy', size / 2).attr('r', 155)
+      .attr('cx', size / 2).attr('cy', size / 2).attr('r', 180)
       .attr('fill', theme.surface)
       .attr('stroke', theme.border)
-      .attr('stroke-width', 1)
+      .attr('stroke-width', 0.5)
       .style('cursor', 'grab')
 
-    const graticule = svg.append('path')
-      .datum(d3.geoGraticule()())
-      .attr('d', path)
-      .attr('fill', 'none')
-      .attr('stroke', theme.primary)
-      .attr('stroke-opacity', 0.06)
-      .attr('stroke-width', 0.5)
+    // Graticule
+    const graticuleGroup = svg.append('g')
+    function renderGraticule() {
+      graticuleGroup.selectAll('*').remove()
+      graticuleGroup.append('path')
+        .datum(d3.geoGraticule()())
+        .attr('d', path)
+        .attr('fill', 'none')
+        .attr('stroke', theme.primary)
+        .attr('stroke-opacity', 0.06)
+        .attr('stroke-width', 0.4)
+    }
+    renderGraticule()
 
-    // Load world topology for real land shapes
-    const landGroup = svg.append('g').attr('class', 'land')
-
-    // Approximate land masses with more detailed shapes
-    const landRegions = [
-      [-100, 45, 18], [-80, 25, 8], [-60, -15, 14], [-70, -35, 8],
-      [0, 50, 12], [10, 45, 10], [25, 55, 8], [30, 0, 12], [20, 30, 6],
-      [50, 25, 8], [75, 25, 12], [100, 35, 14], [105, 15, 8],
-      [120, 35, 8], [135, -25, 12], [140, 38, 5],
-    ]
-
+    // Land group — real country shapes
+    const landGroup = svg.append('g')
     function renderLand() {
       landGroup.selectAll('*').remove()
-      landRegions.forEach(([lon, lat, r]) => {
-        const pos = projection([lon, lat])
-        if (pos) {
-          landGroup.append('circle')
-            .attr('cx', pos[0]).attr('cy', pos[1]).attr('r', r)
-            .attr('fill', theme.textMuted).attr('opacity', 0.15)
-        }
-      })
+      if (!worldRef.current) return
+      const countries = topojson.feature(worldRef.current, worldRef.current.objects.countries)
+      landGroup.selectAll('path')
+        .data(countries.features)
+        .enter().append('path')
+        .attr('d', path)
+        .attr('fill', theme.textMuted)
+        .attr('fill-opacity', 0.2)
+        .attr('stroke', theme.primary)
+        .attr('stroke-opacity', 0.12)
+        .attr('stroke-width', 0.3)
     }
     renderLand()
 
-    // Event dots group
-    const dotsGroup = svg.append('g').attr('class', 'dots')
+    // Arc lines group
+    const arcsGroup = svg.append('g')
+    // Dots group
+    const dotsGroup = svg.append('g')
 
     const sevColorMap = { critical: theme.critical, high: theme.high, medium: theme.medium, low: theme.low, info: theme.info }
 
-    function renderDots() {
+    function renderDotsAndArcs() {
       dotsGroup.selectAll('*').remove()
-      const recentEvents = events.slice(0, 50)
+      arcsGroup.selectAll('*').remove()
+
+      const recentEvents = events.slice(0, 40)
+
+      // Draw attack arc lines from source to destination
+      recentEvents.forEach((evt, i) => {
+        const srcPos = projection([evt.lon, evt.lat])
+        const dstPos = projection(DEST_COORDS)
+        if (!srcPos || !dstPos) return
+
+        const color = sevColorMap[evt.severity] || theme.primary
+
+        // Great circle arc as a GeoJSON LineString
+        const arcData = {
+          type: 'LineString',
+          coordinates: [[evt.lon, evt.lat], DEST_COORDS],
+        }
+        const arcPath = path(arcData)
+        if (!arcPath) return
+
+        // Draw the arc line
+        const arc = arcsGroup.append('path')
+          .attr('d', arcPath)
+          .attr('fill', 'none')
+          .attr('stroke', color)
+          .attr('stroke-width', 1)
+          .attr('stroke-opacity', 0)
+          .attr('stroke-dasharray', '4,3')
+
+        // Animate recent arcs (first 8 events get animated)
+        if (i < 8) {
+          const totalLen = arc.node().getTotalLength()
+          arc
+            .attr('stroke-dasharray', `${totalLen},${totalLen}`)
+            .attr('stroke-dashoffset', totalLen)
+            .attr('stroke-opacity', 0.6)
+            .transition().duration(1500).ease(d3.easeLinear)
+            .attr('stroke-dashoffset', 0)
+            .transition().duration(2000)
+            .attr('stroke-opacity', 0.1)
+        } else {
+          arc.attr('stroke-opacity', 0.08).attr('stroke-dasharray', '2,4')
+        }
+      })
+
+      // Draw event dots at source locations
       recentEvents.forEach((evt) => {
         const pos = projection([evt.lon, evt.lat])
         if (!pos) return
         const color = sevColorMap[evt.severity] || theme.primary
         const isSelected = selectedCountry && evt.country === selectedCountry
 
-        // Outer pulse ring
+        // Glow
         dotsGroup.append('circle')
           .attr('cx', pos[0]).attr('cy', pos[1])
-          .attr('r', isSelected ? 10 : 6)
+          .attr('r', isSelected ? 8 : 5)
+          .attr('fill', color).attr('opacity', 0.15)
+          .attr('filter', 'url(#dot-glow)')
+
+        // Pulse ring
+        dotsGroup.append('circle')
+          .attr('cx', pos[0]).attr('cy', pos[1])
+          .attr('r', isSelected ? 8 : 5)
           .attr('fill', 'none').attr('stroke', color)
-          .attr('opacity', isSelected ? 0.5 : 0.3)
-          .attr('stroke-width', isSelected ? 1 : 0.5)
+          .attr('opacity', isSelected ? 0.6 : 0.3)
+          .attr('stroke-width', isSelected ? 1.5 : 0.5)
           .attr('class', 'pulse-ring')
 
         // Core dot
         dotsGroup.append('circle')
           .attr('cx', pos[0]).attr('cy', pos[1])
-          .attr('r', isSelected ? 5 : 3)
+          .attr('r', isSelected ? 4 : 2.5)
           .attr('fill', color)
-          .attr('opacity', isSelected ? 1 : 0.7)
-          .attr('filter', 'url(#dot-shadow)')
+          .attr('opacity', isSelected ? 1 : 0.85)
           .style('cursor', 'pointer')
-          .on('click', () => {
-            if (onCountryClick) onCountryClick(evt.country)
-          })
+          .on('click', () => { if (onCountryClick) onCountryClick(evt.country) })
       })
 
-      // Animated new-event ring for the most recent event
+      // Destination marker (your network)
+      const dstPos = projection(DEST_COORDS)
+      if (dstPos) {
+        dotsGroup.append('circle')
+          .attr('cx', dstPos[0]).attr('cy', dstPos[1]).attr('r', 6)
+          .attr('fill', theme.primary).attr('opacity', 0.2).attr('filter', 'url(#dot-glow)')
+        dotsGroup.append('circle')
+          .attr('cx', dstPos[0]).attr('cy', dstPos[1]).attr('r', 4)
+          .attr('fill', theme.primary).attr('opacity', 0.9)
+        dotsGroup.append('circle')
+          .attr('cx', dstPos[0]).attr('cy', dstPos[1]).attr('r', 8)
+          .attr('fill', 'none').attr('stroke', theme.primary)
+          .attr('stroke-width', 1.5).attr('opacity', 0.5)
+          .attr('class', 'pulse-ring')
+      }
+
+      // Animated expanding ring on newest event
       if (recentEvents.length > 0) {
         const newest = recentEvents[0]
         const pos = projection([newest.lon, newest.lat])
         if (pos) {
           const color = sevColorMap[newest.severity] || theme.primary
-          const ring = dotsGroup.append('circle')
-            .attr('cx', pos[0]).attr('cy', pos[1]).attr('r', 4)
+          dotsGroup.append('circle')
+            .attr('cx', pos[0]).attr('cy', pos[1]).attr('r', 3)
             .attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2).attr('opacity', 1)
-          ring.transition().duration(1500).attr('r', 20).attr('opacity', 0).remove()
+            .transition().duration(1500).attr('r', 18).attr('opacity', 0).remove()
         }
       }
     }
-    renderDots()
+    renderDotsAndArcs()
 
     // Drag to rotate
     const drag = d3.drag()
@@ -378,27 +593,31 @@ function Globe({ events, theme, onCountryClick, selectedCountry }) {
         const r = rotationRef.current
         rotationRef.current = [r[0] + event.dx * 0.4, Math.max(-60, Math.min(60, r[1] - event.dy * 0.4)), r[2]]
         projection.rotate(rotationRef.current)
-        graticule.attr('d', path)
+        renderGraticule()
         renderLand()
-        renderDots()
+        renderDotsAndArcs()
       })
       .on('end', () => {
         globeCircle.style('cursor', 'grab')
-        // Resume auto-rotation after 3 seconds
         setTimeout(() => { autoRotateRef.current = true }, 3000)
       })
 
     svg.call(drag)
 
     // Auto-rotation
+    let frameCount = 0
     function autoRotate() {
       if (autoRotateRef.current) {
-        const r = rotationRef.current
-        rotationRef.current = [r[0] + 0.15, r[1], r[2]]
-        projection.rotate(rotationRef.current)
-        graticule.attr('d', path)
-        renderLand()
-        renderDots()
+        frameCount++
+        // Only update every 2nd frame for perf
+        if (frameCount % 2 === 0) {
+          const r = rotationRef.current
+          rotationRef.current = [r[0] + 0.12, r[1], r[2]]
+          projection.rotate(rotationRef.current)
+          renderGraticule()
+          renderLand()
+          renderDotsAndArcs()
+        }
       }
       animFrameRef.current = requestAnimationFrame(autoRotate)
     }
@@ -407,9 +626,9 @@ function Globe({ events, theme, onCountryClick, selectedCountry }) {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     }
-  }, [events, theme, selectedCountry])
+  }, [events, theme, selectedCountry, ref.current?.getAttribute('data-loaded')])
 
-  return <svg ref={ref} width={size} height={size} style={{ display: 'block' }} />
+  return <svg ref={ref} width={size} height={size} style={{ display: 'block', margin: '0 auto' }} />
 }
 
 // ─── BAR CHART COMPONENT ────────────────────────────────────────────────────
@@ -646,7 +865,7 @@ export default function App() {
     statLabel: { fontSize: 11, color: theme.textMuted, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
     statValue: { fontSize: 28, fontWeight: 700, fontFamily: FONTS.mono, color: theme.text, lineHeight: 1 },
     statSpark: { marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 },
-    threeCol: { display: 'grid', gridTemplateColumns: '380px 1fr 240px', gap: 20, marginBottom: 24 },
+    threeCol: { display: 'grid', gridTemplateColumns: '440px 1fr 240px', gap: 20, marginBottom: 24 },
     panel: {
       background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16,
       padding: 20, transition: 'all 0.3s',
