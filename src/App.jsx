@@ -386,8 +386,6 @@ async function loadWorldData() {
 function Globe({ events, theme, onCountryClick, selectedCountry }) {
   const ref = useRef()
   const rotationRef = useRef([-20, -20, 0])
-  const autoRotateRef = useRef(true)
-  const animFrameRef = useRef(null)
   const worldRef = useRef(null)
   const size = 400
 
@@ -586,7 +584,6 @@ function Globe({ events, theme, onCountryClick, selectedCountry }) {
     // Drag to rotate
     const drag = d3.drag()
       .on('start', () => {
-        autoRotateRef.current = false
         globeCircle.style('cursor', 'grabbing')
       })
       .on('drag', (event) => {
@@ -599,33 +596,11 @@ function Globe({ events, theme, onCountryClick, selectedCountry }) {
       })
       .on('end', () => {
         globeCircle.style('cursor', 'grab')
-        setTimeout(() => { autoRotateRef.current = true }, 3000)
       })
 
     svg.call(drag)
 
-    // Auto-rotation
-    let frameCount = 0
-    function autoRotate() {
-      if (autoRotateRef.current) {
-        frameCount++
-        // Only update every 2nd frame for perf
-        if (frameCount % 2 === 0) {
-          const r = rotationRef.current
-          rotationRef.current = [r[0] + 0.12, r[1], r[2]]
-          projection.rotate(rotationRef.current)
-          renderGraticule()
-          renderLand()
-          renderDotsAndArcs()
-        }
-      }
-      animFrameRef.current = requestAnimationFrame(autoRotate)
-    }
-    animFrameRef.current = requestAnimationFrame(autoRotate)
-
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
-    }
+    return () => {}
   }, [events, theme, selectedCountry, ref.current?.getAttribute('data-loaded')])
 
   return <svg ref={ref} width={size} height={size} style={{ display: 'block', margin: '0 auto' }} />
