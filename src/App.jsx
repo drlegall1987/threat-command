@@ -1,11 +1,16 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import * as d3 from 'd3'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
 const FONTS = {
-  sans: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  sans: "Poppins, 'Poppins Fallback', system-ui, sans-serif",
   mono: "'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace",
+}
+
+const BRAND = {
+  blue: '#2563eb',
+  navy: '#111827',
 }
 
 const LIGHT = {
@@ -15,7 +20,7 @@ const LIGHT = {
   primary: '#2563eb',
   primaryHover: '#1d4ed8',
   primaryLight: '#60a5fa',
-  primaryBg: '#eff6ff',
+  primaryBg: '#dbeafe',
   critical: '#dc2626',
   criticalBg: '#fef2f2',
   high: '#d97706',
@@ -33,10 +38,12 @@ const LIGHT = {
   borderHover: '#cbd5e1',
   shadow: '0 1px 3px rgba(0,0,0,0.08)',
   shadowLg: '0 10px 25px rgba(0,0,0,0.08)',
-  headerBg: 'rgba(255,255,255,0.85)',
+  headerBg: 'rgba(255,255,255,0.9)',
   tableBg: '#ffffff',
   tableRowHover: '#f8fafc',
   tableHeader: '#f1f5f9',
+  navText: '#334155',
+  logoText: BRAND.navy,
 }
 
 const DARK = {
@@ -64,10 +71,12 @@ const DARK = {
   borderHover: '#334155',
   shadow: '0 1px 3px rgba(0,0,0,0.3)',
   shadowLg: '0 10px 25px rgba(0,0,0,0.4)',
-  headerBg: 'rgba(2,6,23,0.85)',
+  headerBg: 'rgba(2,6,23,0.9)',
   tableBg: '#0f172a',
   tableRowHover: '#1e293b',
   tableHeader: '#1e293b',
+  navText: '#cbd5e1',
+  logoText: '#ffffff',
 }
 
 const SEVERITY_KEYS = ['critical', 'high', 'medium', 'low', 'info']
@@ -110,44 +119,32 @@ const PROTOCOLS = ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'SSH', 'DNS', 'SMTP', 
 
 const DETECTION_SOURCES = ['Wazuh SIEM', 'T-Pot Honeypot', 'FortiGate IPS', 'Meraki Firewall', 'Suricata IDS', 'Threat Feed', 'Synology Logs']
 
-const TABS = ['Overview', 'Threat Events', 'Honeypot', 'Intel Feeds', 'SIEM & Devices']
+const TABS = ['Overview', 'Threat Events', 'Honeypot', 'Intel Feeds']
 
+// Updated feeds to match the screenshot - best open source threat intel feeds
 const FEEDS = [
-  { id: 'urlhaus', name: 'URLhaus', url: 'https://urlhaus-api.abuse.ch/v1/', type: 'Malicious URLs', category: 'malware' },
-  { id: 'malwarebazaar', name: 'MalwareBazaar', url: 'https://bazaar.abuse.ch/api/', type: 'Malware Samples', category: 'malware' },
-  { id: 'feodotracker', name: 'Feodo Tracker', url: 'https://feodotracker.abuse.ch/downloads/ipblocklist.json', type: 'Botnet C2', category: 'c2' },
-  { id: 'sslbl', name: 'SSL Blacklist', url: 'https://sslbl.abuse.ch/blacklist/sslblacklist.csv', type: 'SSL Certs', category: 'certificates' },
-  { id: 'threatfox', name: 'ThreatFox', url: 'https://threatfox-api.abuse.ch/api/v1/', type: 'IoC Sharing', category: 'ioc' },
-  { id: 'openphish', name: 'OpenPhish', url: 'https://openphish.com/feed.txt', type: 'Phishing URLs', category: 'phishing' },
-  { id: 'dshield', name: 'DShield Top 20', url: 'https://isc.sans.edu/api/topips/records/20?json', type: 'Top Attackers', category: 'ip' },
-  { id: 'otx', name: 'AlienVault OTX', url: 'https://otx.alienvault.com/api/v1/pulses/subscribed', type: 'IoC Platform', category: 'ioc' },
-  { id: 'misp', name: 'MISP OSINT', url: 'https://www.circl.lu/doc/misp/feed-osint/', type: 'Structured IoCs', category: 'ioc' },
-  { id: 'greynoise', name: 'GreyNoise', url: 'https://api.greynoise.io/v3/community/', type: 'Scanner Intel', category: 'ip' },
-  { id: 'spamhaus', name: 'Spamhaus DROP', url: 'https://www.spamhaus.org/drop/drop.txt', type: 'IP Blocklist', category: 'ip' },
-  { id: 'etopen', name: 'ET Open Rules', url: 'https://rules.emergingthreats.net/open/suricata/rules/', type: 'IDS/Suricata', category: 'rules' },
-  { id: 'cinsscore', name: 'CINS Army', url: 'https://cinsscore.com/list/ci-badguys.txt', type: 'IP Reputation', category: 'ip' },
-  { id: 'crowdsec', name: 'CrowdSec CTI', url: 'https://cti.api.crowdsec.net/v2/smoke/', type: 'Crowd Intel', category: 'ip' },
-  { id: 'talos', name: 'Cisco Talos', url: 'https://talosintelligence.com/reputation_center', type: 'IP/Domain Rep', category: 'ip' },
-  { id: 'uscert', name: 'CISA Advisories', url: 'https://www.cisa.gov/news-events/cybersecurity-advisories', type: 'Gov Advisories', category: 'advisory' },
+  { id: 'cinsscore', name: 'CINSscore.com - ci-badguys', url: 'https://cinsscore.com/list/ci-badguys.txt', type: 'IP Reputation', category: 'ip' },
+  { id: 'talos', name: 'Cisco Talos - IP Blacklist', url: 'https://talosintelligence.com/reputation_center', type: 'IP/Domain Rep', category: 'ip' },
+  { id: 'torexits', name: 'Dan.me.uk - TOR Exit Nodes', url: 'https://www.dan.me.uk/torlist/', type: 'TOR Exit Nodes', category: 'ip' },
+  { id: 'etcc', name: 'Emerging Threats C&C Server', url: 'https://rules.emergingthreats.net/open/suricata/rules/', type: 'C&C Rules', category: 'c2' },
+  { id: 'greensnow', name: 'GreenSnow.co - Blocklist', url: 'https://blocklist.greensnow.co/greensnow.txt', type: 'IP Blocklist', category: 'ip' },
+  { id: 'haleys', name: "Haley's Brute Force IPs", url: 'https://charles.the-haleys.org/ssh_dico_attack_hdeny_format.php/hostsdeny.txt', type: 'Brute Force IPs', category: 'ip' },
+  { id: 'iscdaily', name: 'ISC - Daily Suspicious Domains', url: 'https://isc.sans.edu/feeds/suspiciousdomains_Low.txt', type: 'Suspicious Domains', category: 'ioc' },
+  { id: 'iscdshield', name: 'ISC - DShield Scanning IPs', url: 'https://isc.sans.edu/api/topips/records/20?json', type: 'Scanning IPs', category: 'ip' },
+  { id: 'isctopips', name: 'ISC - Top Attacking IPs', url: 'https://isc.sans.edu/api/topips/records/100?json', type: 'Top Attackers', category: 'ip' },
+  { id: 'honeypot', name: 'Project Honeypot', url: 'https://www.projecthoneypot.org/', type: 'Honeypot Intel', category: 'ip' },
+  { id: 'thaicert', name: 'ThaiCERT', url: 'https://apt.thaicert.or.th/cgi-bin/listgroups.cgi', type: 'APT Groups', category: 'advisory' },
+  { id: 'spamhausdrop', name: 'Spamhaus - DROP List', url: 'https://www.spamhaus.org/drop/drop.txt', type: 'IP Blocklist', category: 'ip' },
+  { id: 'spamhausedrop', name: 'Spamhaus - Extended DROP', url: 'https://www.spamhaus.org/drop/edrop.txt', type: 'Extended Blocklist', category: 'ip' },
+  { id: 'threatfox', name: 'ThreatFox OSINT', url: 'https://threatfox-api.abuse.ch/api/v1/', type: 'Malware IoCs', category: 'malware' },
+  { id: 'bruteforcer', name: 'BruteForcer IP Blocklist', url: 'https://danger.rulez.sk/projects/bruteforceblocker/', type: 'Brute Force IPs', category: 'ip' },
+  { id: 'voipbl', name: 'VoIPBL.org - VoIP Blacklist', url: 'http://www.voipbl.org/update/', type: 'VoIP Abuse', category: 'ip' },
 ]
 
 const CATEGORY_COLORS = {
   malware: '#dc2626', c2: '#ea580c', phishing: '#9333ea', ip: '#2563eb',
   ioc: '#ca8a04', certificates: '#16a34a', rules: '#0284c7', advisory: '#d97706',
 }
-
-const DEVICES = [
-  { name: 'Meraki MX Appliance', type: 'Firewall/SD-WAN', os: 'Meraki Cloud-Managed', method: 'TLS Syslog TCP/6514', format: 'Meraki Syslog', icon: '🛡️', eps: 42 },
-  { name: 'Meraki MR Access Points', type: 'Wireless', os: 'Meraki Cloud-Managed', method: 'UDP Syslog 514', format: 'Meraki Wireless Events', icon: '📡', eps: 18 },
-  { name: 'Meraki MS Switches', type: 'Network Switch', os: 'Meraki Cloud-Managed', method: 'UDP Syslog 514', format: 'Meraki Event Log', icon: '🔌', eps: 12 },
-  { name: 'FortiGate 60F Firewall', type: 'NGFW / UTM', os: 'FortiOS 7.6.6', method: 'TLS Syslog TCP/6514', format: 'FortiGate CEF/Syslog', icon: '🔥', eps: 85 },
-  { name: 'Synology NAS', type: 'Storage / Backup', os: 'DSM 7.x', method: 'TLS Syslog TCP/6514', format: 'Synology DSM Syslog', icon: '💾', eps: 8 },
-  { name: 'IoT Devices Hub', type: 'IoT Gateway', os: 'Home Assistant / MQTT', method: 'Wazuh API Poller', format: 'JSON / MQTT Events', icon: '🏠', eps: 5 },
-  { name: 'IoT Cameras', type: 'Surveillance', os: 'Various Firmware', method: 'Syslog → Wazuh', format: 'Syslog / ONVIF', icon: '📹', eps: 3 },
-  { name: 'Smart Speakers/Displays', type: 'IoT Consumer', os: 'Proprietary', method: 'Network Traffic → Suricata', format: 'EVE JSON (passive)', icon: '🔊', eps: 2 },
-  { name: 'Honeypot VPS (T-Pot)', type: 'Deception', os: 'Debian 12 + T-Pot CE', method: 'Wazuh Agent + Logstash', format: 'Cowrie JSON / ECS', icon: '🍯', eps: 120 },
-  { name: 'Suricata IDS', type: 'IDS/IPS', os: 'Inline on FortiGate/VPS', method: 'eve.json → Filebeat → Wazuh', format: 'EVE JSON', icon: '🔍', eps: 65 },
-]
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -210,6 +207,23 @@ function formatUTC() {
   return now.toISOString().slice(11, 19) + ' UTC'
 }
 
+// ─── LOGO SVG (exact from daniellegall.com) ─────────────────────────────────
+
+function LogoIcon({ dark }) {
+  return (
+    <svg viewBox="0 0 2000 2000" width={40} height={40} style={{ display: 'block' }}>
+      <polygon
+        points="873,352 1217,352 597,1648 253,1648"
+        fill={BRAND.blue}
+      />
+      <path
+        d="M800,352 L1100,352 C1500,352 1750,650 1750,1000 C1750,1350 1500,1648 1100,1648 L800,1648 L800,352 Z M950,520 L950,1480 L1100,1480 C1400,1480 1580,1250 1580,1000 C1580,750 1400,520 1100,520 L950,520 Z"
+        fill={dark ? '#ffffff' : BRAND.navy}
+      />
+    </svg>
+  )
+}
+
 // ─── SPARKLINE COMPONENT ────────────────────────────────────────────────────
 
 function Sparkline({ data, color, width = 80, height = 28 }) {
@@ -247,7 +261,6 @@ function Globe({ events, theme }) {
 
     const path = d3.geoPath().projection(projection)
 
-    // Glow
     const defs = svg.append('defs')
     const radial = defs.append('radialGradient').attr('id', 'globe-glow')
     radial.append('stop').attr('offset', '0%').attr('stop-color', theme.primary).attr('stop-opacity', 0.12)
@@ -258,14 +271,12 @@ function Globe({ events, theme }) {
 
     svg.append('circle').attr('cx', size / 2).attr('cy', size / 2).attr('r', 165).attr('fill', 'url(#globe-glow)')
 
-    // Ocean
     svg.append('circle')
       .attr('cx', size / 2).attr('cy', size / 2).attr('r', 155)
       .attr('fill', theme.surface)
       .attr('stroke', theme.border)
       .attr('stroke-width', 1)
 
-    // Graticule
     svg.append('path')
       .datum(d3.geoGraticule()())
       .attr('d', path)
@@ -274,7 +285,6 @@ function Globe({ events, theme }) {
       .attr('stroke-opacity', 0.06)
       .attr('stroke-width', 0.5)
 
-    // Landmasses (approximate with circles)
     const landRegions = [
       [-100, 45, 18], [-80, 25, 8], [-60, -15, 14], [-70, -35, 8],
       [0, 50, 12], [10, 45, 10], [25, 55, 8], [30, 0, 12], [20, 30, 6],
@@ -290,7 +300,6 @@ function Globe({ events, theme }) {
       }
     })
 
-    // Attack dots
     const sevColorMap = { critical: theme.critical, high: theme.high, medium: theme.medium, low: theme.low, info: theme.info }
     const recentEvents = events.slice(0, 50)
     recentEvents.forEach((evt) => {
@@ -340,11 +349,36 @@ function AttackBarChart({ events, theme }) {
   )
 }
 
+// ─── REAL FEED FETCHING ─────────────────────────────────────────────────────
+
+const LIVE_FEED_URLS = {
+  cinsscore: 'https://cinsscore.com/list/ci-badguys.txt',
+  spamhausdrop: 'https://www.spamhaus.org/drop/drop.txt',
+  greensnow: 'https://blocklist.greensnow.co/greensnow.txt',
+}
+
+async function fetchFeedCounts() {
+  const results = {}
+  for (const [key, url] of Object.entries(LIVE_FEED_URLS)) {
+    try {
+      const res = await fetch(url)
+      if (res.ok) {
+        const text = await res.text()
+        const lines = text.split('\n').filter(l => l.trim() && !l.startsWith(';') && !l.startsWith('#'))
+        results[key] = lines.length
+      }
+    } catch {
+      // Feed unavailable — use simulated count
+    }
+  }
+  return results
+}
+
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [dark, setDark] = useState(() => {
-    try { return localStorage.getItem('theme') === 'dark' } catch { return true }
+    try { return localStorage.getItem('theme') === 'dark' } catch { return false }
   })
   const [tab, setTab] = useState(0)
   const [live, setLive] = useState(true)
@@ -352,6 +386,7 @@ export default function App() {
   const [clock, setClock] = useState(formatUTC())
   const [sevFilter, setSevFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [feedCounts, setFeedCounts] = useState({})
   const nextId = useRef(150)
 
   const theme = dark ? DARK : LIGHT
@@ -364,6 +399,11 @@ export default function App() {
   useEffect(() => {
     const t = setInterval(() => setClock(formatUTC()), 1000)
     return () => clearInterval(t)
+  }, [])
+
+  // Try to fetch real feed data on mount
+  useEffect(() => {
+    fetchFeedCounts().then(setFeedCounts)
   }, [])
 
   // Live event generation
@@ -430,10 +470,10 @@ export default function App() {
 
   // Honeypot sessions
   const honeypotSessions = useMemo(() => {
-    return events.filter(e => e.source === 'T-Pot Honeypot').slice(0, 30).map((e, i) => ({
+    return events.filter(e => e.source === 'T-Pot Honeypot').slice(0, 30).map((e) => ({
       ...e,
-      credentials: pick(['root:root', 'admin:admin', 'admin:1234', 'pi:raspberry', 'user:password', 'test:test', '—']),
-      commands: pick(['uname -a; cat /etc/passwd', 'wget http://...', 'curl | sh', 'ls; whoami', 'cd /tmp; chmod +x *', '—']),
+      credentials: pick(['root:root', 'admin:admin', 'admin:1234', 'pi:raspberry', 'user:password', 'test:test', '\u2014']),
+      commands: pick(['uname -a; cat /etc/passwd', 'wget http://...', 'curl | sh', 'ls; whoami', 'cd /tmp; chmod +x *', '\u2014']),
       duration: `${rand(1, 300)}s`,
       malware: Math.random() > 0.7 ? 'YES' : 'NO',
       status: pick(['active', 'closed', 'suspicious']),
@@ -451,54 +491,71 @@ export default function App() {
       WebkitFontSmoothing: 'antialiased',
       transition: 'background 0.3s, color 0.3s',
     },
+    // Header — matches daniellegall.com exactly
     header: {
       position: 'sticky', top: 0, zIndex: 50,
       background: theme.headerBg,
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
       borderBottom: `1px solid ${theme.border}`,
-      padding: '0 32px',
-      height: 64,
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '0 16px',
     },
-    headerLeft: { display: 'flex', alignItems: 'center', gap: 16 },
-    logo: { color: theme.primary, fontSize: 22, marginRight: 4 },
-    title: { fontSize: 16, fontWeight: 600, letterSpacing: 1.5, color: theme.text },
-    subtitle: { fontSize: 12, color: theme.textSecondary, marginLeft: 8 },
-    headerRight: { display: 'flex', alignItems: 'center', gap: 20, fontSize: 13 },
+    headerInner: {
+      maxWidth: 1280,
+      margin: '0 auto',
+      padding: '0 8px',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      height: 80,
+    },
+    headerLeft: { display: 'flex', alignItems: 'center', gap: 12 },
+    logoText: {
+      fontSize: 20, fontWeight: 700, letterSpacing: '-0.5px',
+      color: theme.logoText, fontFamily: FONTS.sans,
+      display: 'flex', alignItems: 'center', gap: 0,
+    },
+    headerRight: { display: 'flex', alignItems: 'center', gap: 16, fontSize: 13 },
     statusDot: (color) => ({ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: color, marginRight: 5 }),
+    statusLabel: { fontSize: 14, fontWeight: 500, color: theme.navText, transition: 'color 0.2s' },
     toggleBtn: {
-      padding: '5px 14px', borderRadius: 6, border: `1px solid ${theme.border}`,
-      background: live ? theme.primary : 'transparent',
+      padding: '8px 16px', borderRadius: 6,
+      background: live ? BRAND.blue : 'transparent',
+      border: live ? 'none' : `1px solid ${theme.border}`,
       color: live ? '#fff' : theme.textSecondary,
-      fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: FONTS.mono,
+      fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FONTS.sans,
       transition: 'all 0.2s',
     },
     themeBtn: {
-      padding: '5px 10px', borderRadius: 6, border: `1px solid ${theme.border}`,
-      background: 'transparent', color: theme.textSecondary, cursor: 'pointer', fontSize: 16,
+      width: 40, height: 40, borderRadius: 6,
+      border: `1px solid ${theme.border}`,
+      background: 'transparent', color: theme.textSecondary, cursor: 'pointer', fontSize: 18,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
       transition: 'all 0.2s',
     },
-    clock: { fontFamily: FONTS.mono, fontSize: 13, color: theme.textMuted },
+    clock: { fontFamily: FONTS.mono, fontSize: 13, color: theme.textMuted, fontWeight: 500 },
+    // Tab nav
     nav: {
-      display: 'flex', gap: 0, borderBottom: `1px solid ${theme.border}`,
-      padding: '0 32px', background: theme.bg,
+      display: 'flex', gap: 0,
+      borderBottom: `1px solid ${theme.border}`,
+      background: theme.bg,
+      maxWidth: 1280,
+      margin: '0 auto',
+      padding: '0 24px',
     },
     tabBtn: (active) => ({
-      padding: '14px 20px', fontSize: 13, fontWeight: active ? 600 : 400,
-      color: active ? theme.primary : theme.textSecondary,
+      padding: '14px 20px', fontSize: 14, fontWeight: active ? 600 : 500,
+      color: active ? theme.primary : theme.navText,
       background: 'none', border: 'none', cursor: 'pointer',
       borderBottom: active ? `2px solid ${theme.primary}` : '2px solid transparent',
       transition: 'all 0.2s', fontFamily: FONTS.sans,
     }),
-    main: { padding: '24px 32px', maxWidth: 1600, margin: '0 auto' },
+    main: { padding: '24px 24px', maxWidth: 1280, margin: '0 auto' },
     statsRow: { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16, marginBottom: 24 },
     statCard: {
       background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16,
       padding: '20px 20px 16px', transition: 'all 0.3s',
       cursor: 'default',
     },
-    statLabel: { fontSize: 12, color: theme.textMuted, fontWeight: 500, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+    statLabel: { fontSize: 11, color: theme.textMuted, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
     statValue: { fontSize: 28, fontWeight: 700, fontFamily: FONTS.mono, color: theme.text, lineHeight: 1 },
     statSpark: { marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 },
     threeCol: { display: 'grid', gridTemplateColumns: '380px 1fr 240px', gap: 20, marginBottom: 24 },
@@ -551,24 +608,28 @@ export default function App() {
       maxHeight: 420, overflowY: 'auto', borderRadius: 12,
       border: `1px solid ${theme.border}`,
     },
+    // Footer — matches daniellegall.com exactly
     footer: {
-      borderTop: `1px solid ${theme.border}`, padding: '16px 32px',
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      fontSize: 12, color: theme.textMuted,
+      background: BRAND.navy,
+      padding: '32px 16px',
+      textAlign: 'center',
+    },
+    footerText: {
+      color: '#94a3b8',
+      fontSize: 14,
+      fontFamily: FONTS.sans,
     },
     feedGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 },
     feedCard: {
       background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16,
       padding: 20, transition: 'all 0.3s',
     },
-    twoCol: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 },
   }
 
   // ─── RENDER TABS ─────────────────────────────────────────────────────────
 
   const renderOverview = () => (
     <div style={{ animation: 'fadeIn 0.3s ease' }}>
-      {/* Stat Cards */}
       <div style={s.statsRow}>
         {[
           { label: 'Total Events', value: stats.total.toLocaleString(), data: sparkData.total, color: theme.primary },
@@ -588,7 +649,6 @@ export default function App() {
         ))}
       </div>
 
-      {/* 3-Column: Globe / Attack Vectors / Countries */}
       <div style={s.threeCol}>
         <div style={s.panel}>
           <div style={s.panelTitle}>Attack Origins</div>
@@ -615,7 +675,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Live Event Stream */}
       <div style={s.panel}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div style={s.panelTitle}>Live Event Stream</div>
@@ -708,7 +767,6 @@ export default function App() {
 
   const renderHoneypot = () => (
     <div style={{ animation: 'fadeIn 0.3s ease' }}>
-      {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         {[
           { label: 'Status', value: 'ONLINE', color: theme.low },
@@ -723,7 +781,6 @@ export default function App() {
         ))}
       </div>
 
-      {/* Integration info */}
       <div style={{ ...s.panel, marginBottom: 24 }}>
         <div style={s.panelTitle}>Honeypot Integration</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
@@ -734,14 +791,13 @@ export default function App() {
             { label: 'SIEM Link', value: 'Wazuh Agent + Logstash' },
           ].map((item, i) => (
             <div key={i}>
-              <div style={{ fontSize: 11, color: theme.textMuted, textTransform: 'uppercase', marginBottom: 4, letterSpacing: 0.5 }}>{item.label}</div>
+              <div style={{ fontSize: 11, color: theme.textMuted, textTransform: 'uppercase', marginBottom: 4, letterSpacing: 0.5, fontWeight: 600 }}>{item.label}</div>
               <div style={{ fontSize: 13, color: theme.text, fontWeight: 500 }}>{item.value}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Sessions table */}
       <div style={s.panel}>
         <div style={s.panelTitle}>Sessions</div>
         <div style={{ ...s.tableWrap, maxHeight: 500 }}>
@@ -764,14 +820,10 @@ export default function App() {
                   <td style={{ ...s.td, fontSize: 11, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.commands}</td>
                   <td style={s.td}>{e.duration}</td>
                   <td style={s.td}>
-                    <span style={{
-                      ...s.sevBadge(e.malware === 'YES' ? 'critical' : 'low'),
-                    }}>{e.malware}</span>
+                    <span style={s.sevBadge(e.malware === 'YES' ? 'critical' : 'low')}>{e.malware}</span>
                   </td>
                   <td style={s.td}>
-                    <span style={{
-                      ...s.sevBadge(e.status === 'active' ? 'high' : e.status === 'suspicious' ? 'medium' : 'info'),
-                    }}>{e.status}</span>
+                    <span style={s.sevBadge(e.status === 'active' ? 'high' : e.status === 'suspicious' ? 'medium' : 'info')}>{e.status}</span>
                   </td>
                 </tr>
               ))}
@@ -783,41 +835,46 @@ export default function App() {
   )
 
   const renderIntelFeeds = () => {
-    const feedCounts = {}
-    events.forEach(e => { feedCounts[e.feed] = (feedCounts[e.feed] || 0) + 1 })
+    const simFeedCounts = {}
+    events.forEach(e => { simFeedCounts[e.feed] = (simFeedCounts[e.feed] || 0) + 1 })
 
     return (
       <div style={{ animation: 'fadeIn 0.3s ease' }}>
         <div style={s.feedGrid}>
-          {FEEDS.map(feed => (
-            <div key={feed.id} style={s.feedCard} className="card-hover">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: theme.text, marginBottom: 4 }}>{feed.name}</div>
-                  <div style={{ fontSize: 12, color: theme.textSecondary }}>{feed.type}</div>
+          {FEEDS.map(feed => {
+            const realCount = feedCounts[feed.id]
+            const displayCount = realCount || simFeedCounts[feed.name] || rand(10, 200)
+            return (
+              <div key={feed.id} style={s.feedCard} className="card-hover">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: theme.text, marginBottom: 4 }}>{feed.name}</div>
+                    <div style={{ fontSize: 12, color: theme.textSecondary }}>{feed.type}</div>
+                  </div>
+                  <div style={{
+                    width: 10, height: 10, borderRadius: '50%',
+                    background: CATEGORY_COLORS[feed.category],
+                  }} />
                 </div>
-                <div style={{
-                  width: 10, height: 10, borderRadius: '50%',
-                  background: CATEGORY_COLORS[feed.category],
-                }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 20, fontWeight: 700, fontFamily: FONTS.mono, color: theme.text }}>{feedCounts[feed.name] || rand(10, 200)}</div>
-                  <div style={{ fontSize: 11, color: theme.textMuted }}>events</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 11, color: theme.low, fontWeight: 600 }}>ACTIVE</div>
-                  <div style={{ fontSize: 10, color: theme.textMuted, fontFamily: FONTS.mono }}>
-                    {rand(1, 45)}m ago
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 20, fontWeight: 700, fontFamily: FONTS.mono, color: theme.text }}>
+                      {realCount ? realCount.toLocaleString() : displayCount}
+                    </div>
+                    <div style={{ fontSize: 11, color: theme.textMuted }}>{realCount ? 'live IoCs' : 'events'}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 11, color: theme.low, fontWeight: 600 }}>ACTIVE</div>
+                    <div style={{ fontSize: 10, color: theme.textMuted, fontFamily: FONTS.mono }}>
+                      {rand(1, 45)}m ago
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
-        {/* Feed reference table */}
         <div style={s.panel}>
           <div style={s.panelTitle}>Feed Endpoints</div>
           <div style={s.tableWrap}>
@@ -851,102 +908,12 @@ export default function App() {
     )
   }
 
-  const renderSIEM = () => (
-    <div style={{ animation: 'fadeIn 0.3s ease' }}>
-      <div style={s.twoCol}>
-        {/* Wazuh SIEM */}
-        <div style={s.panel}>
-          <div style={s.panelTitle}>Wazuh SIEM Manager</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            {[
-              { label: 'Version', value: '4.9.2' },
-              { label: 'Deployment', value: 'Hetzner VPS' },
-              { label: 'Connected Agents', value: '10' },
-              { label: 'Events/Day', value: '~28,400' },
-              { label: 'Dashboards', value: 'OpenSearch' },
-              { label: 'Integrations', value: 'Logstash, Filebeat' },
-              { label: 'Alert Rules', value: '2,847 active' },
-              { label: 'Uptime', value: '99.97%' },
-            ].map((item, i) => (
-              <div key={i} style={{ padding: '12px 0', borderBottom: `1px solid ${theme.border}` }}>
-                <div style={{ fontSize: 11, color: theme.textMuted, textTransform: 'uppercase', marginBottom: 4, letterSpacing: 0.5 }}>{item.label}</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: theme.text, fontFamily: FONTS.mono }}>{item.value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Network Devices */}
-        <div style={s.panel}>
-          <div style={s.panelTitle}>Network Devices</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {DEVICES.map((d, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '10px 12px', borderRadius: 10,
-                background: theme.surfaceHover,
-                transition: 'all 0.2s',
-              }}>
-                <span style={{ fontSize: 20, width: 32, textAlign: 'center' }}>{d.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: theme.text }}>{d.name}</div>
-                  <div style={{ fontSize: 11, color: theme.textMuted }}>{d.os}</div>
-                </div>
-                <span style={s.statusDot(theme.low)} />
-                <span style={{ fontSize: 11, fontFamily: FONTS.mono, color: theme.textMuted }}>{d.eps} EPS</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Log Integration Matrix */}
-      <div style={s.panel}>
-        <div style={s.panelTitle}>Log Integration Matrix</div>
-        <div style={s.tableWrap}>
-          <table style={s.table}>
-            <thead>
-              <tr>
-                {['', 'Device', 'Type', 'Integration Method', 'Log Format', 'Status', 'EPS'].map(h => (
-                  <th key={h} style={s.th}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {DEVICES.map((d, i) => (
-                <tr key={i} className="table-row-hover">
-                  <td style={{ ...s.td, fontSize: 18, textAlign: 'center', width: 40 }}>{d.icon}</td>
-                  <td style={{ ...s.td, fontWeight: 500, color: theme.text, fontFamily: FONTS.sans }}>{d.name}</td>
-                  <td style={s.td}>
-                    <span style={{
-                      display: 'inline-block', padding: '2px 8px', borderRadius: 4,
-                      fontSize: 10, fontWeight: 600, background: theme.primaryBg,
-                      color: theme.primary, fontFamily: FONTS.sans,
-                    }}>{d.type}</span>
-                  </td>
-                  <td style={{ ...s.td, fontFamily: FONTS.sans }}>{d.method}</td>
-                  <td style={s.td}>{d.format}</td>
-                  <td style={s.td}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                      <span style={s.statusDot(theme.low)} />
-                      <span style={{ color: theme.low, fontWeight: 600, fontFamily: FONTS.sans }}>Active</span>
-                    </span>
-                  </td>
-                  <td style={{ ...s.td, fontFamily: FONTS.mono }}>{d.eps}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  )
-
-  const tabContent = [renderOverview, renderThreatEvents, renderHoneypot, renderIntelFeeds, renderSIEM]
+  const tabContent = [renderOverview, renderThreatEvents, renderHoneypot, renderIntelFeeds]
 
   return (
     <div style={s.app}>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: translateY(0); }
@@ -957,6 +924,9 @@ export default function App() {
         }
         .pulse-ring {
           animation: pulse 2s ease-in-out infinite;
+        }
+        .card-hover {
+          transition: all 0.3s ease;
         }
         .card-hover:hover {
           transform: translateY(-3px);
@@ -973,32 +943,39 @@ export default function App() {
         * { scrollbar-width: thin; scrollbar-color: ${theme.primary}40 transparent; }
       `}</style>
 
-      {/* Header */}
+      {/* Header — exact daniellegall.com style */}
       <header style={s.header}>
-        <div style={s.headerLeft}>
-          <span style={s.logo}>&#9670;</span>
-          <span style={s.title}>THREAT COMMAND</span>
-          <span style={s.subtitle}>threat.daniellegall.com &mdash; Unified Threat Intelligence</span>
-        </div>
-        <div style={s.headerRight}>
-          <span><span style={s.statusDot(theme.low)} />Wazuh</span>
-          <span><span style={s.statusDot(theme.low)} />T-Pot</span>
-          <span><span style={s.statusDot(theme.low)} />{FEEDS.length} Feeds</span>
-          <button style={s.toggleBtn} onClick={() => setLive(!live)}>
-            {live ? '\u25CF LIVE' : '\u25CB PAUSED'}
-          </button>
-          <button style={s.themeBtn} onClick={() => setDark(!dark)} title="Toggle theme">
-            {dark ? '☀️' : '🌙'}
-          </button>
-          <span style={s.clock}>{clock}</span>
+        <div style={s.headerInner}>
+          <div style={s.headerLeft}>
+            <LogoIcon dark={dark} />
+            <span style={s.logoText}>
+              DANIEL<span style={{ color: BRAND.blue }}>{' '}LEGALL</span>
+            </span>
+            <span style={{ width: 1, height: 24, background: theme.border, margin: '0 8px' }} />
+            <span style={{ fontSize: 14, fontWeight: 500, color: theme.navText }}>Threat Dashboard</span>
+          </div>
+          <div style={s.headerRight}>
+            <span style={s.statusLabel}><span style={s.statusDot(theme.low)} />Wazuh</span>
+            <span style={s.statusLabel}><span style={s.statusDot(theme.low)} />T-Pot</span>
+            <span style={s.statusLabel}><span style={s.statusDot(theme.low)} />{FEEDS.length} Feeds</span>
+            <button style={s.toggleBtn} onClick={() => setLive(!live)}>
+              {live ? '\u25CF LIVE' : '\u25CB PAUSED'}
+            </button>
+            <button style={s.themeBtn} onClick={() => setDark(!dark)} title="Toggle theme">
+              {dark ? '\u2600' : '\u263E'}
+            </button>
+            <span style={s.clock}>{clock}</span>
+          </div>
         </div>
       </header>
 
       {/* Tab Nav */}
-      <nav style={s.nav}>
-        {TABS.map((t, i) => (
-          <button key={t} style={s.tabBtn(tab === i)} onClick={() => setTab(i)}>{t}</button>
-        ))}
+      <nav style={{ borderBottom: `1px solid ${theme.border}`, background: theme.bg }}>
+        <div style={s.nav}>
+          {TABS.map((t, i) => (
+            <button key={t} style={s.tabBtn(tab === i)} onClick={() => setTab(i)}>{t}</button>
+          ))}
+        </div>
       </nav>
 
       {/* Main Content */}
@@ -1006,16 +983,9 @@ export default function App() {
         {tabContent[tab]()}
       </main>
 
-      {/* Footer */}
+      {/* Footer — exact daniellegall.com style */}
       <footer style={s.footer}>
-        <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-          <span>{'🔥'} FortiGate <span style={s.statusDot(theme.low)} /></span>
-          <span>{'📡'} Meraki <span style={s.statusDot(theme.low)} /></span>
-          <span>{'💾'} Synology <span style={s.statusDot(theme.low)} /></span>
-          <span>{'🍯'} T-Pot <span style={s.statusDot(theme.low)} /></span>
-          <span>{'⬡'} Wazuh <span style={s.statusDot(theme.low)} /></span>
-        </div>
-        <span>threat.daniellegall.com</span>
+        <p style={s.footerText}>&copy; 2026 Daniel Legall. All rights reserved.</p>
       </footer>
     </div>
   )
