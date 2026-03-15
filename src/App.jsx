@@ -953,7 +953,7 @@ export default function App() {
           <div style={s.headerLeft}>
             <LogoIcon dark={dark} />
             <span style={s.logoText}>
-              DANIEL<span style={{ color: BRAND.blue }}>{' '}LEGALL</span>
+              DANIEL <span style={{ color: BRAND.blue }}>LEGALL</span>
             </span>
             <span style={{ width: 1, height: 24, background: theme.border, margin: '0 8px' }} />
             <span style={{ fontSize: 14, fontWeight: 500, color: theme.navText }}>Threat Dashboard</span>
