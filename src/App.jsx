@@ -513,9 +513,9 @@ export default function App() {
     },
     headerLeft: { display: 'flex', alignItems: 'center', gap: 12 },
     logoText: {
-      fontSize: 20, fontWeight: 700, letterSpacing: '-0.5px',
+      fontSize: 20, fontWeight: 700, letterSpacing: '-0.025em',
       color: theme.logoText, fontFamily: FONTS.sans,
-      display: 'flex', alignItems: 'center', gap: 0,
+      whiteSpace: 'nowrap',
     },
     headerRight: { display: 'flex', alignItems: 'center', gap: 16, fontSize: 13 },
     statusDot: (color) => ({ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: color, marginRight: 5 }),
@@ -953,7 +953,7 @@ export default function App() {
           <div style={s.headerLeft}>
             <LogoIcon dark={dark} />
             <span style={s.logoText}>
-              DANIEL <span style={{ color: BRAND.blue }}>LEGALL</span>
+              DANIEL{' '}<span style={{ color: BRAND.blue }}>LEGALL</span>
             </span>
             <span style={{ width: 1, height: 24, background: theme.border, margin: '0 8px' }} />
             <span style={{ fontSize: 14, fontWeight: 500, color: theme.navText }}>Threat Dashboard</span>
