@@ -310,7 +310,25 @@ const PROTOCOLS = ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'SSH', 'DNS', 'SMTP', 
 
 const DETECTION_SOURCES = ['T-Pot Honeypot', 'FortiGate IPS', 'Meraki Firewall', 'Suricata IDS', 'Threat Feed', 'Synology Logs']
 
-const TABS = ['Overview', 'Threat Events', 'Honeypot', 'Intel Feeds']
+const TABS = ['Overview', 'Threat Events', 'Honeypot', 'Intel Feeds', 'Vulnerabilities']
+
+const VENDOR_LIST = [
+  { id: 'fortinet', name: 'Fortinet' },
+  { id: 'cisco', name: 'Cisco' },
+  { id: 'checkpoint', name: 'Check Point' },
+  { id: 'juniper', name: 'Juniper' },
+  { id: 'paloalto', name: 'Palo Alto Networks' },
+  { id: 'microsoft', name: 'Microsoft' },
+  { id: 'vmware', name: 'VMware' },
+  { id: 'ivanti', name: 'Ivanti' },
+  { id: 'sonicwall', name: 'SonicWall' },
+  { id: 'citrix', name: 'Citrix' },
+  { id: 'arista', name: 'Arista' },
+  { id: 'f5', name: 'F5 Networks' },
+  { id: 'sophos', name: 'Sophos' },
+  { id: 'crowdstrike', name: 'CrowdStrike' },
+  { id: 'barracuda', name: 'Barracuda' },
+]
 
 const FEEDS = [
   // IP Reputation & Blocklists
@@ -760,6 +778,9 @@ export default function App() {
   const [sevFilter, setSevFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [feedData, setFeedData] = useState(null)
+  const [vulnData, setVulnData] = useState(null)
+  const [vulnVendor, setVulnVendor] = useState('')
+  const [vulnLoading, setVulnLoading] = useState(false)
   const [selectedCountry, setSelectedCountry] = useState('')
   const nextId = useRef(200)
 
@@ -798,6 +819,24 @@ export default function App() {
     }, 300000)
     return () => clearInterval(interval)
   }, [])
+
+  // Fetch vulnerability data
+  const fetchVulns = useCallback(async (vendor) => {
+    setVulnLoading(true)
+    try {
+      const url = vendor ? `/api/vulns?vendor=${vendor}` : '/api/vulns'
+      const res = await fetch(url)
+      if (res.ok) {
+        const data = await res.json()
+        setVulnData(data)
+      }
+    } catch { /* silent */ }
+    setVulnLoading(false)
+  }, [])
+
+  useEffect(() => {
+    if (tab === 4) fetchVulns(vulnVendor)
+  }, [tab, vulnVendor, fetchVulns])
 
   // Live event generation
   useEffect(() => {
@@ -1445,7 +1484,202 @@ export default function App() {
     )
   }
 
-  const tabContent = [renderOverview, renderThreatEvents, renderHoneypot, renderIntelFeeds]
+  const renderVulnerabilities = () => {
+    const cves = vulnData?.cves || []
+    const sevBreak = vulnData?.severityBreakdown || { critical: 0, high: 0, medium: 0, low: 0 }
+    const vendorStats = vulnData?.vendorStats || []
+    const kevByVendor = vulnData?.kevByVendor || []
+
+    return (
+      <div style={{ animation: 'fadeIn 0.3s ease', padding: 24 }}>
+        {/* Vendor filter */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select
+            value={vulnVendor}
+            onChange={e => setVulnVendor(e.target.value)}
+            style={{
+              padding: '8px 14px', borderRadius: 8, border: `1px solid ${theme.border}`,
+              background: theme.surface, color: theme.text, fontSize: 13,
+              fontFamily: FONTS.sans, outline: 'none', cursor: 'pointer',
+            }}
+          >
+            <option value="">All Vendors (Overview)</option>
+            {VENDOR_LIST.map(v => (
+              <option key={v.id} value={v.id}>{v.name}</option>
+            ))}
+          </select>
+          {vulnLoading && (
+            <span style={{ fontSize: 12, color: theme.textMuted, fontStyle: 'italic' }}>Loading CVEs...</span>
+          )}
+          {vulnData && !vulnLoading && (
+            <span style={{ fontSize: 12, color: theme.textSecondary }}>
+              {vulnData.totalCves} CVEs found &middot; {vulnData.totalKEV.toLocaleString()} CISA KEV total
+            </span>
+          )}
+          {vulnData && (
+            <span style={{ fontSize: 11, color: theme.textMuted, marginLeft: 'auto', fontFamily: FONTS.mono }}>
+              Last updated: {new Date(vulnData.timestamp).toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+
+        {/* Overview stats cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
+          {[
+            { label: 'Total CVEs', value: vulnData?.totalCves || 0, color: theme.accent },
+            { label: 'Critical', value: sevBreak.critical, color: theme.critical },
+            { label: 'High', value: sevBreak.high, color: theme.high },
+            { label: 'Medium', value: sevBreak.medium, color: theme.medium },
+            { label: 'CISA KEV', value: vulnData?.totalKEV?.toLocaleString() || '0', color: theme.critical },
+          ].map((c, i) => (
+            <div key={i} style={{
+              background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12,
+              padding: '16px 20px',
+            }} className="card-hover">
+              <div style={{ fontSize: 11, color: theme.textMuted, fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>{c.label}</div>
+              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: FONTS.mono, color: c.color, lineHeight: 1 }}>{c.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Two-column: Vendor breakdown + CISA KEV by vendor */}
+        {!vulnVendor && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+            {/* Vendor CVE breakdown */}
+            <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5 }}>CVEs by Vendor</div>
+              {vendorStats.length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      {['Vendor', 'Total', 'Critical', 'High', 'Exploited'].map(h => (
+                        <th key={h} style={{ textAlign: h === 'Vendor' ? 'left' : 'right', padding: '6px 8px', color: theme.textMuted, fontWeight: 500, fontSize: 11, borderBottom: `1px solid ${theme.border}` }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vendorStats.map(v => (
+                      <tr key={v.name} style={{ cursor: 'pointer' }} onClick={() => {
+                        const match = VENDOR_LIST.find(vl => vl.name === v.name)
+                        if (match) setVulnVendor(match.id)
+                      }}>
+                        <td style={{ padding: '6px 8px', color: theme.text, fontFamily: FONTS.sans, fontWeight: 500 }}>{v.name}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: theme.text, fontFamily: FONTS.mono }}>{v.total}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: v.critical > 0 ? theme.critical : theme.textMuted, fontFamily: FONTS.mono, fontWeight: v.critical > 0 ? 600 : 400 }}>{v.critical}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: v.high > 0 ? theme.high : theme.textMuted, fontFamily: FONTS.mono }}>{v.high}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: v.exploited > 0 ? theme.critical : theme.textMuted, fontFamily: FONTS.mono, fontWeight: v.exploited > 0 ? 600 : 400 }}>{v.exploited}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ color: theme.textMuted, fontSize: 13 }}>Loading vendor data...</div>
+              )}
+            </div>
+
+            {/* CISA KEV by vendor */}
+            <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5 }}>CISA Known Exploited by Vendor</div>
+              {kevByVendor.length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      {['Vendor', 'Exploited CVEs', 'Ransomware'].map(h => (
+                        <th key={h} style={{ textAlign: h === 'Vendor' ? 'left' : 'right', padding: '6px 8px', color: theme.textMuted, fontWeight: 500, fontSize: 11, borderBottom: `1px solid ${theme.border}` }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kevByVendor.map(v => (
+                      <tr key={v.name}>
+                        <td style={{ padding: '6px 8px', color: theme.text, fontFamily: FONTS.sans, fontWeight: 500 }}>{v.name}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: theme.critical, fontFamily: FONTS.mono, fontWeight: 600 }}>{v.count}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: v.ransomware > 0 ? theme.critical : theme.textMuted, fontFamily: FONTS.mono }}>{v.ransomware > 0 ? v.ransomware : '\u2014'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ color: theme.textMuted, fontSize: 13 }}>Loading KEV data...</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* CVE Table */}
+        <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            {vulnVendor ? `${VENDOR_LIST.find(v => v.id === vulnVendor)?.name || vulnVendor} CVEs` : 'Recent CVEs (All Vendors)'}
+          </div>
+          <div style={{ maxHeight: 520, overflowY: 'auto', borderRadius: 8, border: `1px solid ${theme.border}` }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
+              <thead>
+                <tr>
+                  {['CVE ID', 'CVSS', 'Severity', 'Vendor', 'Published', 'Exploited', 'Description'].map(h => (
+                    <th key={h} style={{
+                      textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: theme.textSecondary,
+                      borderBottom: `1px solid ${theme.border}`, background: theme.surfaceAlt,
+                      position: 'sticky', top: 0, zIndex: 2, fontSize: 11,
+                      textTransform: 'uppercase', letterSpacing: 0.5, fontFamily: FONTS.sans,
+                      whiteSpace: 'nowrap',
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {cves.length > 0 ? cves.map(cve => (
+                  <tr key={cve.id} className="table-row-hover">
+                    <td style={{ padding: '9px 12px', borderBottom: `1px solid ${theme.border}`, fontFamily: FONTS.mono, fontSize: 12, whiteSpace: 'nowrap' }}>
+                      <a
+                        href={`https://nvd.nist.gov/vuln/detail/${cve.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: theme.accent, textDecoration: 'none' }}
+                      >
+                        {cve.id}
+                      </a>
+                    </td>
+                    <td style={{ padding: '9px 12px', borderBottom: `1px solid ${theme.border}`, fontFamily: FONTS.mono, fontSize: 13, fontWeight: 700, color: cve.severity === 'critical' ? theme.critical : cve.severity === 'high' ? theme.high : cve.severity === 'medium' ? theme.medium : theme.textSecondary }}>
+                      {cve.score.toFixed(1)}
+                    </td>
+                    <td style={{ padding: '9px 12px', borderBottom: `1px solid ${theme.border}` }}>
+                      <span style={sevBadge(cve.severity)}>{cve.severity}</span>
+                    </td>
+                    <td style={{ padding: '9px 12px', borderBottom: `1px solid ${theme.border}`, fontFamily: FONTS.sans, color: theme.text, fontWeight: 500, whiteSpace: 'nowrap' }}>
+                      {cve.vendor}
+                    </td>
+                    <td style={{ padding: '9px 12px', borderBottom: `1px solid ${theme.border}`, fontFamily: FONTS.mono, fontSize: 11, color: theme.textSecondary, whiteSpace: 'nowrap' }}>
+                      {cve.published}
+                    </td>
+                    <td style={{ padding: '9px 12px', borderBottom: `1px solid ${theme.border}`, whiteSpace: 'nowrap' }}>
+                      {cve.activelyExploited ? (
+                        <span style={{ ...sevBadge('critical'), fontSize: 9 }}>
+                          EXPLOITED{cve.knownRansomware ? ' + RANSOMWARE' : ''}
+                        </span>
+                      ) : (
+                        <span style={{ color: theme.textMuted, fontSize: 11 }}>\u2014</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '9px 12px', borderBottom: `1px solid ${theme.border}`, fontFamily: FONTS.sans, fontSize: 11, color: theme.textSecondary, maxWidth: 400, lineHeight: 1.4 }}>
+                      {cve.description}
+                    </td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td colSpan={7} style={{ padding: '24px 12px', textAlign: 'center', color: theme.textMuted, fontFamily: FONTS.sans }}>
+                      {vulnLoading ? 'Loading vulnerability data from NVD...' : 'No CVE data available. Select a vendor or try again.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const tabContent = [renderOverview, renderThreatEvents, renderHoneypot, renderIntelFeeds, renderVulnerabilities]
 
   return (
     <div style={{
