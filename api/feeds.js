@@ -2,16 +2,36 @@
 // Fetches real IoC counts + geolocates IPs to countries
 
 const FEEDS = [
-  { id: 'cinsscore', name: 'CINSscore.com - ci-badguys', url: 'https://cinsscore.com/list/ci-badguys.txt', type: 'text' },
-  { id: 'spamhausdrop', name: 'Spamhaus - DROP List', url: 'https://www.spamhaus.org/drop/drop.txt', type: 'text' },
-  { id: 'spamhausedrop', name: 'Spamhaus - Extended DROP', url: 'https://www.spamhaus.org/drop/edrop.txt', type: 'text' },
-  { id: 'greensnow', name: 'GreenSnow.co - Blocklist', url: 'https://blocklist.greensnow.co/greensnow.txt', type: 'text' },
-  { id: 'threatfox', name: 'ThreatFox OSINT', url: 'https://threatfox.abuse.ch/export/csv/recent/', type: 'csv' },
-  { id: 'feodotracker', name: 'Feodo Tracker - Botnet C2', url: 'https://feodotracker.abuse.ch/downloads/ipblocklist.txt', type: 'text' },
+  // IP Reputation & Blocklists
+  { id: 'cinsscore', name: 'CINSscore - CI Bad Guys', url: 'https://cinsscore.com/list/ci-badguys.txt', type: 'text' },
+  { id: 'spamhausdrop', name: 'Spamhaus DROP List', url: 'https://www.spamhaus.org/drop/drop.txt', type: 'text' },
+  { id: 'spamhausedrop', name: 'Spamhaus EDROP', url: 'https://www.spamhaus.org/drop/edrop.txt', type: 'text' },
+  { id: 'greensnow', name: 'GreenSnow Blocklist', url: 'https://blocklist.greensnow.co/greensnow.txt', type: 'text' },
+  { id: 'bruteforcer', name: 'BruteForcer IPs', url: 'https://danger.rulez.sk/projects/bruteforceblocker/blist.php', type: 'text' },
+  { id: 'blocklist_de', name: 'Blocklist.de All', url: 'https://lists.blocklist.de/lists/all.txt', type: 'text' },
+  { id: 'stamparm', name: 'Stamparm Maltrail', url: 'https://raw.githubusercontent.com/stamparm/maltrail/master/trails/static/mass_scanner.txt', type: 'text' },
+  // TOR
+  { id: 'torexits', name: 'TOR Exit Nodes', url: 'https://www.dan.me.uk/torlist/', type: 'text' },
+  // C2 & Malware
+  { id: 'etcc', name: 'ET Compromised IPs', url: 'https://rules.emergingthreats.net/blockrules/compromised-ips.txt', type: 'text' },
+  { id: 'feodotracker', name: 'Feodo Tracker C2', url: 'https://feodotracker.abuse.ch/downloads/ipblocklist.txt', type: 'text' },
   { id: 'sslbl', name: 'SSL Blacklist', url: 'https://sslbl.abuse.ch/blacklist/sslipblacklist.txt', type: 'text' },
-  { id: 'urlhaus', name: 'URLhaus - Malicious URLs', url: 'https://urlhaus.abuse.ch/downloads/text_recent/', type: 'text' },
-  { id: 'bruteforcer', name: 'BruteForcer IP Blocklist', url: 'https://danger.rulez.sk/projects/bruteforceblocker/blist.php', type: 'text' },
-  { id: 'etcc', name: 'Emerging Threats C&C', url: 'https://rules.emergingthreats.net/blockrules/compromised-ips.txt', type: 'text' },
+  { id: 'threatfox', name: 'ThreatFox IoCs', url: 'https://threatfox.abuse.ch/export/csv/recent/', type: 'csv' },
+  { id: 'urlhaus', name: 'URLhaus Malicious URLs', url: 'https://urlhaus.abuse.ch/downloads/text_recent/', type: 'text' },
+  { id: 'bazaar', name: 'MalwareBazaar Recent', url: 'https://mb-api.abuse.ch/api/v1/', type: 'text' },
+  // Scanning & Honeypot
+  { id: 'isctopips', name: 'ISC Top Attackers', url: 'https://isc.sans.edu/api/topips/records/100?json', type: 'json' },
+  { id: 'iscdshield', name: 'ISC DShield Scanners', url: 'https://isc.sans.edu/api/topips/records/20?json', type: 'json' },
+  { id: 'dataplane_ssh', name: 'Dataplane SSH Brute', url: 'https://dataplane.org/sshpwauth.txt', type: 'text' },
+  { id: 'dataplane_dns', name: 'Dataplane DNS Rec', url: 'https://dataplane.org/dnsrd.txt', type: 'text' },
+  // Domains & IOCs
+  { id: 'iscdaily', name: 'ISC Suspicious Domains', url: 'https://isc.sans.edu/feeds/suspiciousdomains_Low.txt', type: 'text' },
+  { id: 'openphish', name: 'OpenPhish Phishing', url: 'https://openphish.com/feed.txt', type: 'text' },
+  { id: 'phishtank', name: 'PhishTank Verified', url: 'https://data.phishtank.com/data/online-valid.csv', type: 'csv' },
+  { id: 'c2intelfeeds', name: 'C2 Intel Feeds IPs', url: 'https://raw.githubusercontent.com/drb-ra/C2IntelFeeds/master/feeds/IPC2s-30day.csv', type: 'csv' },
+  // Advisory
+  { id: 'thaicert', name: 'ThaiCERT APT Groups', url: 'https://apt.thaicert.or.th/cgi-bin/listgroups.cgi', type: 'text' },
+  { id: 'cisagov', name: 'CISA Known Exploited', url: 'https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json', type: 'json' },
 ]
 
 async function fetchFeed(feed) {
@@ -27,10 +47,33 @@ async function fetchFeed(feed) {
     if (!res.ok) return { id: feed.id, name: feed.name, count: null, status: 'error', error: res.status }
 
     const text = await res.text()
-    const lines = text.split('\n').filter(l => {
-      const trimmed = l.trim()
-      return trimmed && !trimmed.startsWith('#') && !trimmed.startsWith(';') && !trimmed.startsWith('//')
-    })
+    let lines, count
+
+    // Handle JSON feeds (ISC, CISA)
+    if (feed.type === 'json') {
+      try {
+        const json = JSON.parse(text)
+        if (Array.isArray(json)) {
+          lines = json.map(j => JSON.stringify(j))
+          count = json.length
+        } else if (json.vulnerabilities) {
+          lines = json.vulnerabilities.map(v => JSON.stringify(v))
+          count = json.vulnerabilities.length
+        } else {
+          lines = [text]
+          count = 1
+        }
+      } catch {
+        lines = text.split('\n').filter(l => l.trim())
+        count = lines.length
+      }
+    } else {
+      lines = text.split('\n').filter(l => {
+        const trimmed = l.trim()
+        return trimmed && !trimmed.startsWith('#') && !trimmed.startsWith(';') && !trimmed.startsWith('//')
+      })
+      count = lines.length
+    }
 
     // Extract sample IPs from the feed
     const ips = []
@@ -43,7 +86,7 @@ async function fetchFeed(feed) {
     return {
       id: feed.id,
       name: feed.name,
-      count: lines.length,
+      count,
       sampleIPs: ips,
       status: 'active',
       lastSync: new Date().toISOString(),
