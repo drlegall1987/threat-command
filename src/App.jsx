@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import * as d3 from 'd3'
 import * as topojson from 'topojson-client'
 
@@ -10,82 +10,60 @@ const FONTS = {
 }
 
 const BRAND = {
-  blue: '#2563eb',
-  navy: '#111827',
+  magenta: '#e91e8c',
+  magentaLight: '#ff4db8',
+  magentaDark: '#b8166e',
+  magentaBg: 'rgba(233,30,140,0.12)',
+  magentaGlow: 'rgba(233,30,140,0.4)',
 }
 
-const LIGHT = {
-  bg: '#ffffff',
-  surface: '#f8fafc',
-  surfaceHover: '#f1f5f9',
-  primary: '#2563eb',
-  primaryHover: '#1d4ed8',
-  primaryLight: '#60a5fa',
-  primaryBg: '#dbeafe',
-  critical: '#dc2626',
-  criticalBg: '#fef2f2',
-  high: '#d97706',
-  highBg: '#fffbeb',
-  medium: '#ca8a04',
-  mediumBg: '#fefce8',
-  low: '#16a34a',
-  lowBg: '#f0fdf4',
-  info: '#2563eb',
-  infoBg: '#eff6ff',
-  text: '#0f172a',
-  textSecondary: '#475569',
-  textMuted: '#94a3b8',
-  border: '#e2e8f0',
-  borderHover: '#cbd5e1',
-  shadow: '0 1px 3px rgba(0,0,0,0.08)',
-  shadowLg: '0 10px 25px rgba(0,0,0,0.08)',
-  headerBg: 'rgba(255,255,255,0.9)',
-  tableBg: '#ffffff',
-  tableRowHover: '#f8fafc',
-  tableHeader: '#f1f5f9',
-  navText: '#334155',
-  logoText: BRAND.navy,
-}
-
-const DARK = {
-  bg: '#020617',
-  surface: '#0f172a',
-  surfaceHover: '#1e293b',
-  primary: '#3b82f6',
-  primaryHover: '#60a5fa',
-  primaryLight: '#60a5fa',
-  primaryBg: '#1e3a5f',
+const THEME = {
+  bg: '#0d0d14',
+  surface: '#13131f',
+  surfaceAlt: '#181828',
+  surfaceHover: '#1e1e30',
+  border: '#252538',
+  borderLight: '#2f2f48',
+  text: '#e8e8f0',
+  textSecondary: '#8888a8',
+  textMuted: '#555570',
+  accent: BRAND.magenta,
+  accentLight: BRAND.magentaLight,
+  accentBg: BRAND.magentaBg,
   critical: '#ef4444',
-  criticalBg: '#450a0a',
+  criticalBg: 'rgba(239,68,68,0.12)',
   high: '#f59e0b',
-  highBg: '#451a03',
+  highBg: 'rgba(245,158,11,0.12)',
   medium: '#eab308',
-  mediumBg: '#422006',
+  mediumBg: 'rgba(234,179,8,0.12)',
   low: '#22c55e',
-  lowBg: '#052e16',
+  lowBg: 'rgba(34,197,94,0.12)',
   info: '#60a5fa',
-  infoBg: '#1e3a5f',
-  text: '#f8fafc',
-  textSecondary: '#94a3b8',
-  textMuted: '#64748b',
-  border: '#1e293b',
-  borderHover: '#334155',
-  shadow: '0 1px 3px rgba(0,0,0,0.3)',
-  shadowLg: '0 10px 25px rgba(0,0,0,0.4)',
-  headerBg: 'rgba(2,6,23,0.9)',
-  tableBg: '#0f172a',
-  tableRowHover: '#1e293b',
-  tableHeader: '#1e293b',
-  navText: '#cbd5e1',
-  logoText: '#ffffff',
+  infoBg: 'rgba(96,165,250,0.12)',
+  mapLand: '#2a2a40',
+  mapBorder: '#e91e8c',
+  mapOcean: '#0d0d14',
+  dotGreen: '#66cc66',
+  dotBlue: '#6699ff',
+  dotYellow: '#ffcc33',
+  dotRed: '#ff4444',
 }
-
-const SEVERITY_KEYS = ['critical', 'high', 'medium', 'low', 'info']
 
 const ATTACK_TYPES = [
   'Brute Force SSH', 'Port Scan', 'SQL Injection', 'XSS Attempt', 'DDoS SYN Flood',
   'Malware C2 Beacon', 'Phishing Link', 'DNS Tunneling', 'RDP Exploit', 'Log4j Probe',
   'SMB Exploit', 'Credential Stuffing', 'IoT Botnet Scan', 'Meraki VPN Probe', 'FortiGate IPS Alert',
+]
+
+const ALERT_CATEGORIES = [
+  { name: 'Unclassified', color: '#ff4466' },
+  { name: 'File Sharing', color: '#6699ff' },
+  { name: 'Remote Administration', color: '#66cc66' },
+  { name: 'Web', color: '#66cccc' },
+  { name: 'Database', color: '#ffcc33' },
+  { name: 'VoIP', color: '#cc66ff' },
+  { name: 'Network Service', color: '#ff8866' },
+  { name: 'Mail', color: '#88aaff' },
 ]
 
 const COUNTRIES = [
@@ -297,7 +275,6 @@ const DETECTION_SOURCES = ['T-Pot Honeypot', 'FortiGate IPS', 'Meraki Firewall',
 
 const TABS = ['Overview', 'Threat Events', 'Honeypot', 'Intel Feeds']
 
-// Updated feeds to match the screenshot - best open source threat intel feeds
 const FEEDS = [
   { id: 'cinsscore', name: 'CINSscore.com - ci-badguys', url: 'https://cinsscore.com/list/ci-badguys.txt', type: 'IP Reputation', category: 'ip' },
   { id: 'talos', name: 'Cisco Talos - IP Blacklist', url: 'https://talosintelligence.com/reputation_center', type: 'IP/Domain Rep', category: 'ip' },
@@ -354,6 +331,7 @@ function generateEvent(id) {
     time: new Date(Date.now() - rand(0, 300000)),
     severity,
     attackType: pick(ATTACK_TYPES),
+    category: pick(ALERT_CATEGORIES).name,
     srcIP: randomIP(),
     dstIP: randomPrivateIP(),
     country: country.code,
@@ -383,51 +361,104 @@ function formatTime(date) {
   return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-function formatUTC() {
+function formatDateTime() {
   const now = new Date()
-  return now.toISOString().slice(11, 19) + ' UTC'
+  return now.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }) + ', ' +
+    now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })
 }
 
-// ─── LOGO SVG (exact from daniellegall.com) ─────────────────────────────────
+// ─── LOGO SVG ───────────────────────────────────────────────────────────────
 
-function LogoIcon({ dark }) {
+function LogoIcon() {
   return (
-    <svg viewBox="0 0 2000 2000" width={40} height={40} style={{ display: 'block' }}>
+    <svg viewBox="0 0 2000 2000" width={44} height={44} style={{ display: 'block' }}>
       <polygon
         points="892.9,989.61 792.23,1212.63 580.92,1212.63 723.61,896.55 934.91,896.55"
-        fill={BRAND.blue}
+        fill={BRAND.magenta}
       />
       <path
         d="M1115.89,1196.06l-94.42,209.18h-316.2l86.95-192.61h241.28c22.19,0,43.34-3.37,63.24-9.55C1103.25,1201.07,1109.67,1198.71,1115.89,1196.06z"
-        fill={dark ? '#ffffff' : BRAND.navy}
+        fill="#ffffff"
       />
       <path
         d="M1438.74,1000c0,41.73-6.38,82.34-18.26,120.46c-11.88,38.16-29.17,73.83-51.04,106.17c-43.66,64.6-105.33,115.88-178.2,146.7c-33.35,14.12-69.06,23.92-106.21,28.65l137.39-304.36c2.57-4.86,9.87-22.03,10.07-22.55c8.79-23.27,13.6-48.43,13.64-75.08c-0.04-22.23-3.37-43.38-9.55-63.28c-6.22-19.9-15.25-38.56-26.72-55.54c-22.95-33.99-55.62-61.07-93.66-77.16c-25.36-10.71-53.09-16.65-82.7-16.65H561.26l95.58-192.61h376.67c41.73,0,82.3,6.34,120.46,18.22c38.12,11.88,73.83,29.21,106.17,51.04c64.6,43.66,115.89,105.37,146.7,178.2C1427.39,890.78,1438.74,944.3,1438.74,1000z"
-        fill={dark ? '#ffffff' : BRAND.navy}
+        fill="#ffffff"
       />
     </svg>
   )
 }
 
-// ─── SPARKLINE COMPONENT ────────────────────────────────────────────────────
+// ─── AREA CHART COMPONENT (Alerts over time) ────────────────────────────────
 
-function Sparkline({ data, color, width = 80, height = 28 }) {
+function AlertAreaChart({ data, width = 340, height = 180 }) {
   const ref = useRef()
   useEffect(() => {
     if (!ref.current || !data.length) return
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
-    const x = d3.scaleLinear().domain([0, data.length - 1]).range([2, width - 2])
-    const y = d3.scaleLinear().domain([d3.min(data) * 0.9, d3.max(data) * 1.1]).range([height - 2, 2])
+
+    const margin = { top: 10, right: 10, bottom: 25, left: 40 }
+    const w = width - margin.left - margin.right
+    const h = height - margin.top - margin.bottom
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
+
+    const x = d3.scaleLinear().domain([0, data.length - 1]).range([0, w])
+    const y = d3.scaleLinear().domain([0, d3.max(data) * 1.2]).range([h, 0])
+
+    // Grid lines
+    g.selectAll('.grid-line')
+      .data(y.ticks(4))
+      .enter().append('line')
+      .attr('x1', 0).attr('x2', w)
+      .attr('y1', d => y(d)).attr('y2', d => y(d))
+      .attr('stroke', THEME.border).attr('stroke-width', 0.5)
+
+    // Y axis labels
+    g.selectAll('.y-label')
+      .data(y.ticks(4))
+      .enter().append('text')
+      .attr('x', -8).attr('y', d => y(d) + 4)
+      .attr('text-anchor', 'end')
+      .attr('fill', THEME.textMuted).attr('font-size', 9)
+      .attr('font-family', FONTS.mono)
+      .text(d => d >= 1000 ? `${(d/1000).toFixed(0)}k` : d)
+
+    // Area
+    const area = d3.area()
+      .x((_, i) => x(i))
+      .y0(h)
+      .y1(d => y(d))
+      .curve(d3.curveBasis)
+
+    const gradient = svg.append('defs').append('linearGradient')
+      .attr('id', 'area-grad').attr('x1', 0).attr('y1', 0).attr('x2', 0).attr('y2', 1)
+    gradient.append('stop').attr('offset', '0%').attr('stop-color', BRAND.magenta).attr('stop-opacity', 0.4)
+    gradient.append('stop').attr('offset', '100%').attr('stop-color', BRAND.magenta).attr('stop-opacity', 0.02)
+
+    g.append('path').datum(data).attr('d', area).attr('fill', 'url(#area-grad)')
+
+    // Line
     const line = d3.line().x((_, i) => x(i)).y(d => y(d)).curve(d3.curveBasis)
-    const area = d3.area().x((_, i) => x(i)).y0(height).y1(d => y(d)).curve(d3.curveBasis)
-    svg.append('path').datum(data).attr('d', area).attr('fill', color).attr('opacity', 0.1)
-    svg.append('path').datum(data).attr('d', line).attr('fill', 'none').attr('stroke', color).attr('stroke-width', 1.5)
-  }, [data, color, width, height])
+    g.append('path').datum(data).attr('d', line)
+      .attr('fill', 'none').attr('stroke', BRAND.magenta).attr('stroke-width', 2)
+
+    // X axis labels
+    const labels = ['0h', '6h', '12h', '18h', '24h']
+    const step = (data.length - 1) / (labels.length - 1)
+    labels.forEach((label, i) => {
+      g.append('text')
+        .attr('x', x(Math.round(i * step)))
+        .attr('y', h + 18)
+        .attr('text-anchor', 'middle')
+        .attr('fill', THEME.textMuted).attr('font-size', 9)
+        .attr('font-family', FONTS.mono)
+        .text(label)
+    })
+  }, [data, width, height])
   return <svg ref={ref} width={width} height={height} />
 }
 
-// ─── GLOBE COMPONENT (Satellite Imagery + Multi-Directional Attack Arcs) ─────
+// ─── FLAT WORLD MAP COMPONENT ───────────────────────────────────────────────
 
 let worldDataCache = null
 async function loadWorldData() {
@@ -437,416 +468,221 @@ async function loadWorldData() {
   return worldDataCache
 }
 
-let satelliteImgCache = null
-let satelliteImgDataCache = null
-function loadSatelliteImage() {
-  return new Promise((resolve) => {
-    if (satelliteImgCache && satelliteImgDataCache) {
-      resolve({ img: satelliteImgCache, data: satelliteImgDataCache })
-      return
-    }
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => {
-      const c = document.createElement('canvas')
-      c.width = img.width
-      c.height = img.height
-      const ctx = c.getContext('2d')
-      ctx.drawImage(img, 0, 0)
-      const imgData = ctx.getImageData(0, 0, img.width, img.height)
-      satelliteImgCache = img
-      satelliteImgDataCache = imgData
-      resolve({ img, data: imgData })
-    }
-    img.onerror = () => resolve(null)
-    img.src = 'https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57752/land_shallow_topo_2048.jpg'
-  })
-}
-
-function renderSatelliteCanvas(canvas, projection, imgData, imgWidth, imgHeight, renderSize) {
-  const ctx = canvas.getContext('2d')
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-  // Render at reduced resolution for performance
-  const outCanvas = document.createElement('canvas')
-  outCanvas.width = renderSize
-  outCanvas.height = renderSize
-  const outCtx = outCanvas.getContext('2d')
-
-  const output = outCtx.createImageData(renderSize, renderSize)
-  const cx = renderSize / 2, cy = renderSize / 2
-  const r = 180 * (renderSize / 400)
-
-  for (let y = 0; y < renderSize; y++) {
-    for (let x = 0; x < renderSize; x++) {
-      const dx = x - cx, dy = y - cy
-      if (dx * dx + dy * dy > r * r) continue
-
-      // Map pixel back to real coordinates using full-size projection
-      const realX = x / (renderSize / 400)
-      const realY = y / (renderSize / 400)
-      const coords = projection.invert([realX, realY])
-      if (!coords) continue
-
-      const [lon, lat] = coords
-      const ix = Math.floor(((lon + 180) / 360) * imgWidth) % imgWidth
-      const iy = Math.floor(((90 - lat) / 180) * imgHeight)
-
-      if (iy < 0 || iy >= imgHeight || ix < 0) continue
-
-      const srcIdx = (iy * imgWidth + ix) * 4
-      const dstIdx = (y * renderSize + x) * 4
-      output.data[dstIdx] = imgData.data[srcIdx]
-      output.data[dstIdx + 1] = imgData.data[srcIdx + 1]
-      output.data[dstIdx + 2] = imgData.data[srcIdx + 2]
-      output.data[dstIdx + 3] = 255
-    }
-  }
-  outCtx.putImageData(output, 0, 0)
-
-  // Scale up to full canvas size
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = 'high'
-  ctx.drawImage(outCanvas, 0, 0, canvas.width, canvas.height)
-}
-
-function Globe({ events, theme, onCountryClick, selectedCountry, feedGeoIPs }) {
+function WorldMap({ events, onCountryClick, selectedCountry, feedGeoIPs }) {
   const svgRef = useRef()
-  const canvasRef = useRef()
-  const rotationRef = useRef([-20, -20, 0])
+  const containerRef = useRef()
   const worldRef = useRef(null)
-  const satDataRef = useRef(null)
-  const size = 400
-  const renderQualityRef = useRef(200) // half-res for performance, full=400
+  const [dimensions, setDimensions] = useState({ width: 800, height: 400 })
+  const arcsTimerRef = useRef(null)
 
-  // Load world data and satellite image
   useEffect(() => {
-    loadWorldData().then(data => {
-      worldRef.current = data
-      if (svgRef.current) svgRef.current.setAttribute('data-loaded', 'true')
+    loadWorldData().then(data => { worldRef.current = data })
+  }, [])
+
+  // Resize observer
+  useEffect(() => {
+    if (!containerRef.current) return
+    const observer = new ResizeObserver(entries => {
+      const { width } = entries[0].contentRect
+      setDimensions({ width, height: Math.max(320, width * 0.48) })
     })
-    loadSatelliteImage().then(result => {
-      satDataRef.current = result
-      if (canvasRef.current) canvasRef.current.setAttribute('data-sat', 'true')
-    })
+    observer.observe(containerRef.current)
+    return () => observer.disconnect()
   }, [])
 
   useEffect(() => {
-    if (!svgRef.current || !canvasRef.current) return
+    if (!svgRef.current || !worldRef.current) return
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
 
-    const projection = d3.geoOrthographic()
-      .scale(180)
-      .translate([size / 2, size / 2])
-      .rotate(rotationRef.current)
-      .clipAngle(90)
+    const { width, height } = dimensions
+
+    const projection = d3.geoNaturalEarth1()
+      .fitSize([width, height], { type: 'Sphere' })
 
     const path = d3.geoPath().projection(projection)
 
-    // Render satellite canvas
-    function renderCanvas(quality) {
-      if (!satDataRef.current || !canvasRef.current) return
-      const { data: imgData, img } = satDataRef.current
-      renderSatelliteCanvas(canvasRef.current, projection, imgData, img.width, img.height, quality || renderQualityRef.current)
-    }
-    renderCanvas(200)
-
-    // Defs for glow effects
+    // Defs
     const defs = svg.append('defs')
-    const dotFilter = defs.append('filter').attr('id', 'dot-glow')
-    dotFilter.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', 3)
+    const glow = defs.append('filter').attr('id', 'attack-glow')
+    glow.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', 4)
 
-    // Transparent globe circle (for drag interaction — no fill since satellite is behind)
-    const globeCircle = svg.append('circle')
-      .attr('cx', size / 2).attr('cy', size / 2).attr('r', 180)
-      .attr('fill', 'transparent')
-      .style('cursor', 'grab')
+    const arcGlow = defs.append('filter').attr('id', 'arc-glow')
+    arcGlow.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', 2)
 
-    // If satellite not loaded yet, draw fallback land
-    const landGroup = svg.append('g')
-    function renderLand() {
-      landGroup.selectAll('*').remove()
-      if (satDataRef.current) return // satellite loaded, no need for vector fallback
-      if (!worldRef.current) return
-      const countries = topojson.feature(worldRef.current, worldRef.current.objects.countries)
-      landGroup.selectAll('path')
-        .data(countries.features)
-        .enter().append('path')
-        .attr('d', path)
-        .attr('fill', theme.textMuted)
-        .attr('fill-opacity', 0.2)
-        .attr('stroke', theme.primary)
-        .attr('stroke-opacity', 0.12)
-        .attr('stroke-width', 0.3)
-    }
-    renderLand()
+    // Countries
+    const countries = topojson.feature(worldRef.current, worldRef.current.objects.countries)
+    svg.append('g')
+      .selectAll('path')
+      .data(countries.features)
+      .enter().append('path')
+      .attr('d', path)
+      .attr('fill', THEME.mapLand)
+      .attr('stroke', BRAND.magenta)
+      .attr('stroke-opacity', 0.25)
+      .attr('stroke-width', 0.5)
 
-    // Country borders overlay (subtle, on top of satellite)
-    const bordersGroup = svg.append('g')
-    function renderBorders() {
-      bordersGroup.selectAll('*').remove()
-      if (!worldRef.current) return
-      const countries = topojson.feature(worldRef.current, worldRef.current.objects.countries)
-      bordersGroup.selectAll('path')
-        .data(countries.features)
-        .enter().append('path')
-        .attr('d', path)
-        .attr('fill', 'none')
-        .attr('stroke', 'rgba(255,255,255,0.15)')
-        .attr('stroke-width', 0.3)
-    }
-    renderBorders()
+    // Get relevant events
+    const recentEvents = events.slice(0, 80)
+    const visibleEvents = selectedCountry
+      ? recentEvents.filter(e => e.country === selectedCountry || e.dstCountry === selectedCountry)
+      : recentEvents
 
     // Arc lines group
     const arcsGroup = svg.append('g')
     // Dots group
     const dotsGroup = svg.append('g')
 
-    const sevColorMap = { critical: theme.critical, high: theme.high, medium: theme.medium, low: theme.low, info: theme.info }
-
-    function renderDotsAndArcs() {
-      dotsGroup.selectAll('*').remove()
-      arcsGroup.selectAll('*').remove()
-
-      const recentEvents = events.slice(0, 50)
-
-      // Draw attack arc lines between source and destination countries
-      recentEvents.forEach((evt, i) => {
-        const srcPos = projection([evt.lon, evt.lat])
-        const dstPos = projection([evt.dstLon, evt.dstLat])
-        if (!srcPos || !dstPos) return
-
-        // If a country is selected, only show arcs involving that country
-        if (selectedCountry) {
-          if (evt.country !== selectedCountry && evt.dstCountry !== selectedCountry) return
-        }
-
-        const color = sevColorMap[evt.severity] || theme.primary
-
-        // Great circle arc
-        const arcData = {
-          type: 'LineString',
-          coordinates: [[evt.lon, evt.lat], [evt.dstLon, evt.dstLat]],
-        }
-        const arcPath = path(arcData)
-        if (!arcPath) return
-
-        const arc = arcsGroup.append('path')
-          .attr('d', arcPath)
-          .attr('fill', 'none')
-          .attr('stroke', color)
-          .attr('stroke-width', selectedCountry ? 1.5 : 1)
-          .attr('stroke-opacity', 0)
-          .attr('stroke-dasharray', '4,3')
-
-        // Animate the first 12 arcs
-        if (i < 12) {
-          const totalLen = arc.node()?.getTotalLength?.()
-          if (totalLen) {
-            arc
-              .attr('stroke-dasharray', `${totalLen},${totalLen}`)
-              .attr('stroke-dashoffset', totalLen)
-              .attr('stroke-opacity', selectedCountry ? 0.8 : 0.6)
-              .transition().duration(1200 + i * 100).ease(d3.easeLinear)
-              .attr('stroke-dashoffset', 0)
-              .transition().duration(2000)
-              .attr('stroke-opacity', selectedCountry ? 0.3 : 0.1)
-          }
-        } else {
-          arc.attr('stroke-opacity', selectedCountry ? 0.2 : 0.08).attr('stroke-dasharray', '2,4')
-        }
-      })
-
-      // Collect unique locations (both source and destination) for dots
-      const locationMap = new Map()
-      recentEvents.forEach(evt => {
-        if (selectedCountry && evt.country !== selectedCountry && evt.dstCountry !== selectedCountry) return
-        const srcKey = `${evt.country}-src`
-        if (!locationMap.has(srcKey)) {
-          locationMap.set(srcKey, { code: evt.country, name: evt.countryName, lon: evt.lon, lat: evt.lat, severity: evt.severity, hits: 0, type: 'source' })
-        }
-        locationMap.get(srcKey).hits++
-
-        const dstKey = `${evt.dstCountry}-dst`
-        if (!locationMap.has(dstKey)) {
-          locationMap.set(dstKey, { code: evt.dstCountry, name: evt.dstCountryName, lon: evt.dstLon, lat: evt.dstLat, severity: evt.severity, hits: 0, type: 'target' })
-        }
-        locationMap.get(dstKey).hits++
-      })
-
-      // Draw dots for all active locations
-      locationMap.forEach((loc) => {
-        const pos = projection([loc.lon, loc.lat])
-        if (!pos) return
-        const color = loc.type === 'target' ? theme.primary : (sevColorMap[loc.severity] || theme.primary)
-        const isSelected = selectedCountry && loc.code === selectedCountry
-        const dotSize = Math.min(2 + loc.hits * 0.5, 6)
-
-        // Glow
-        dotsGroup.append('circle')
-          .attr('cx', pos[0]).attr('cy', pos[1])
-          .attr('r', isSelected ? dotSize + 4 : dotSize + 2)
-          .attr('fill', color).attr('opacity', 0.15)
-          .attr('filter', 'url(#dot-glow)')
-
-        // Pulse ring
-        dotsGroup.append('circle')
-          .attr('cx', pos[0]).attr('cy', pos[1])
-          .attr('r', isSelected ? dotSize + 4 : dotSize + 2)
-          .attr('fill', 'none').attr('stroke', color)
-          .attr('opacity', isSelected ? 0.7 : 0.3)
-          .attr('stroke-width', isSelected ? 1.5 : 0.5)
-          .attr('class', 'pulse-ring')
-
-        // Core dot
-        dotsGroup.append('circle')
-          .attr('cx', pos[0]).attr('cy', pos[1])
-          .attr('r', isSelected ? dotSize + 1 : dotSize)
-          .attr('fill', color)
-          .attr('opacity', isSelected ? 1 : 0.85)
-          .style('cursor', 'pointer')
-          .on('click', () => {
-            if (onCountryClick) {
-              // Toggle: click same country to deselect
-              onCountryClick(selectedCountry === loc.code ? '' : loc.code)
-            }
-          })
-
-        // Selected country label
-        if (isSelected) {
-          dotsGroup.append('text')
-            .attr('x', pos[0]).attr('y', pos[1] - dotSize - 8)
-            .attr('text-anchor', 'middle')
-            .attr('fill', '#fff')
-            .attr('font-size', 10)
-            .attr('font-family', 'Poppins, sans-serif')
-            .attr('font-weight', 600)
-            .attr('stroke', 'rgba(0,0,0,0.6)')
-            .attr('stroke-width', 2)
-            .attr('paint-order', 'stroke')
-            .text(`${loc.name} (${loc.hits} hits)`)
-        }
-      })
-
-      // Real feed geolocated IPs
-      if (feedGeoIPs && feedGeoIPs.length > 0) {
-        feedGeoIPs.forEach(geo => {
-          const pos = projection([geo.lon, geo.lat])
-          if (!pos) return
-          const isSelected = selectedCountry && geo.countryCode === selectedCountry
-          if (!isSelected && selectedCountry) return
-          dotsGroup.append('circle')
-            .attr('cx', pos[0]).attr('cy', pos[1])
-            .attr('r', isSelected ? 3.5 : 2)
-            .attr('fill', theme.critical)
-            .attr('opacity', isSelected ? 0.9 : 0.4)
-            .style('cursor', 'pointer')
-            .on('click', () => {
-              if (onCountryClick) onCountryClick(selectedCountry === geo.countryCode ? '' : geo.countryCode)
-            })
-        })
+    // Unique location dots - collect both src and dst
+    const locationMap = new Map()
+    visibleEvents.forEach(evt => {
+      const srcKey = `${evt.lat.toFixed(1)},${evt.lon.toFixed(1)}`
+      if (!locationMap.has(srcKey)) {
+        locationMap.set(srcKey, { code: evt.country, name: evt.countryName, lon: evt.lon, lat: evt.lat, hits: 0, type: 'source', severity: evt.severity })
       }
+      locationMap.get(srcKey).hits++
 
-      // Animated expanding ring on newest visible event
-      const visibleEvents = selectedCountry
-        ? recentEvents.filter(e => e.country === selectedCountry || e.dstCountry === selectedCountry)
-        : recentEvents
-      if (visibleEvents.length > 0) {
-        const newest = visibleEvents[0]
-        const pos = projection([newest.lon, newest.lat])
-        if (pos) {
-          const color = sevColorMap[newest.severity] || theme.primary
-          dotsGroup.append('circle')
-            .attr('cx', pos[0]).attr('cy', pos[1]).attr('r', 3)
-            .attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2).attr('opacity', 1)
-            .transition().duration(1500).attr('r', 18).attr('opacity', 0).remove()
-        }
+      const dstKey = `${evt.dstLat.toFixed(1)},${evt.dstLon.toFixed(1)}`
+      if (!locationMap.has(dstKey)) {
+        locationMap.set(dstKey, { code: evt.dstCountry, name: evt.dstCountryName, lon: evt.dstLon, lat: evt.dstLat, hits: 0, type: 'target', severity: evt.severity })
+      }
+      locationMap.get(dstKey).hits++
+    })
+
+    // Draw dots
+    locationMap.forEach((loc) => {
+      const pos = projection([loc.lon, loc.lat])
+      if (!pos) return
+      const isSelected = selectedCountry && loc.code === selectedCountry
+      const baseSize = Math.min(2 + loc.hits * 0.4, 7)
+      const color = loc.type === 'target'
+        ? THEME.dotBlue
+        : (loc.severity === 'critical' ? THEME.dotRed : loc.severity === 'high' ? THEME.dotYellow : THEME.dotGreen)
+
+      // Glow
+      dotsGroup.append('circle')
+        .attr('cx', pos[0]).attr('cy', pos[1])
+        .attr('r', baseSize + 4)
+        .attr('fill', color).attr('opacity', 0.15)
+        .attr('filter', 'url(#attack-glow)')
+
+      // Core dot
+      dotsGroup.append('circle')
+        .attr('cx', pos[0]).attr('cy', pos[1])
+        .attr('r', isSelected ? baseSize + 1 : baseSize)
+        .attr('fill', color)
+        .attr('opacity', isSelected ? 1 : 0.8)
+        .style('cursor', 'pointer')
+        .on('click', () => {
+          if (onCountryClick) onCountryClick(selectedCountry === loc.code ? '' : loc.code)
+        })
+
+      // Label for selected
+      if (isSelected) {
+        dotsGroup.append('text')
+          .attr('x', pos[0]).attr('y', pos[1] - baseSize - 8)
+          .attr('text-anchor', 'middle')
+          .attr('fill', '#fff').attr('font-size', 11)
+          .attr('font-family', FONTS.sans).attr('font-weight', 600)
+          .attr('stroke', 'rgba(0,0,0,0.7)').attr('stroke-width', 2.5)
+          .attr('paint-order', 'stroke')
+          .text(`${loc.name} (${loc.hits})`)
+      }
+    })
+
+    // Real feed geolocated IPs
+    if (feedGeoIPs?.length > 0) {
+      feedGeoIPs.forEach(geo => {
+        if (selectedCountry && geo.countryCode !== selectedCountry) return
+        const pos = projection([geo.lon, geo.lat])
+        if (!pos) return
+        dotsGroup.append('circle')
+          .attr('cx', pos[0]).attr('cy', pos[1])
+          .attr('r', 2.5)
+          .attr('fill', BRAND.magenta)
+          .attr('opacity', 0.5)
+      })
+    }
+
+    // Animated arc lines — staggered for continuous effect
+    let arcIndex = 0
+    function spawnArc() {
+      if (!visibleEvents.length) return
+      const evt = visibleEvents[arcIndex % visibleEvents.length]
+      arcIndex++
+
+      const srcPos = projection([evt.lon, evt.lat])
+      const dstPos = projection([evt.dstLon, evt.dstLat])
+      if (!srcPos || !dstPos) return
+
+      const arcData = {
+        type: 'LineString',
+        coordinates: [[evt.lon, evt.lat], [evt.dstLon, evt.dstLat]],
+      }
+      const arcPath = path(arcData)
+      if (!arcPath) return
+
+      const color = evt.severity === 'critical' ? THEME.dotRed
+        : evt.severity === 'high' ? THEME.dotYellow
+        : BRAND.magenta
+
+      const arc = arcsGroup.append('path')
+        .attr('d', arcPath)
+        .attr('fill', 'none')
+        .attr('stroke', color)
+        .attr('stroke-width', 1.5)
+        .attr('stroke-opacity', 0)
+        .attr('filter', 'url(#arc-glow)')
+
+      const totalLen = arc.node()?.getTotalLength?.()
+      if (totalLen) {
+        arc
+          .attr('stroke-dasharray', `${totalLen},${totalLen}`)
+          .attr('stroke-dashoffset', totalLen)
+          .attr('stroke-opacity', 0.7)
+          .transition().duration(1500).ease(d3.easeLinear)
+          .attr('stroke-dashoffset', 0)
+          .transition().duration(800)
+          .attr('stroke-opacity', 0)
+          .remove()
+
+        // Impact pulse at destination
+        dotsGroup.append('circle')
+          .attr('cx', dstPos[0]).attr('cy', dstPos[1])
+          .attr('r', 3)
+          .attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2).attr('opacity', 0.8)
+          .transition().delay(1500).duration(800)
+          .attr('r', 15).attr('opacity', 0).remove()
       }
     }
-    renderDotsAndArcs()
 
-    // Drag to rotate
-    let dragTimer = null
-    const drag = d3.drag()
-      .on('start', () => {
-        globeCircle.style('cursor', 'grabbing')
-      })
-      .on('drag', (event) => {
-        const r = rotationRef.current
-        rotationRef.current = [r[0] + event.dx * 0.4, Math.max(-60, Math.min(60, r[1] - event.dy * 0.4)), r[2]]
-        projection.rotate(rotationRef.current)
-        renderBorders()
-        renderLand()
-        renderDotsAndArcs()
-        // Throttle canvas re-render during drag (render at low quality)
-        if (dragTimer) clearTimeout(dragTimer)
-        dragTimer = setTimeout(() => renderCanvas(100), 50)
-      })
-      .on('end', () => {
-        globeCircle.style('cursor', 'grab')
-        // Re-render canvas at full quality on drag end
-        renderCanvas(200)
-      })
+    // Spawn initial batch
+    for (let i = 0; i < 5; i++) setTimeout(() => spawnArc(), i * 300)
 
-    svg.call(drag)
+    // Continuous arc spawning
+    arcsTimerRef.current = setInterval(() => {
+      const count = rand(1, 3)
+      for (let i = 0; i < count; i++) setTimeout(() => spawnArc(), i * 200)
+    }, 1200)
 
     return () => {
-      if (dragTimer) clearTimeout(dragTimer)
+      if (arcsTimerRef.current) clearInterval(arcsTimerRef.current)
     }
-  }, [events, theme, selectedCountry, feedGeoIPs, svgRef.current?.getAttribute('data-loaded'), canvasRef.current?.getAttribute('data-sat')])
+  }, [events, selectedCountry, feedGeoIPs, dimensions, worldRef.current])
 
   return (
-    <div style={{ position: 'relative', width: size, height: size, margin: '0 auto' }}>
-      <canvas
-        ref={canvasRef}
-        width={size}
-        height={size}
-        style={{ position: 'absolute', top: 0, left: 0, borderRadius: '50%' }}
-      />
+    <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
       <svg
         ref={svgRef}
-        width={size}
-        height={size}
-        style={{ position: 'absolute', top: 0, left: 0, display: 'block' }}
+        width={dimensions.width}
+        height={dimensions.height}
+        style={{ display: 'block' }}
       />
     </div>
   )
 }
 
-// ─── BAR CHART COMPONENT ────────────────────────────────────────────────────
-
-function AttackBarChart({ events, theme }) {
-  const counts = useMemo(() => {
-    const map = {}
-    events.forEach(e => { map[e.attackType] = (map[e.attackType] || 0) + 1 })
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 10)
-  }, [events])
-
-  const max = counts[0]?.[1] || 1
-
-  return (
-    <div>
-      {counts.map(([type, count]) => (
-        <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <div style={{ width: 140, fontSize: 12, color: theme.textSecondary, fontFamily: FONTS.sans, textAlign: 'right', flexShrink: 0 }}>{type}</div>
-          <div style={{ flex: 1, height: 18, background: theme.surface, borderRadius: 4, overflow: 'hidden' }}>
-            <div style={{
-              width: `${(count / max) * 100}%`,
-              height: '100%',
-              background: `linear-gradient(90deg, ${theme.primary}, ${theme.primaryLight})`,
-              borderRadius: 4,
-              transition: 'width 0.5s ease',
-            }} />
-          </div>
-          <div style={{ width: 36, fontSize: 12, color: theme.textMuted, fontFamily: FONTS.mono, textAlign: 'right' }}>{count}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ─── REAL FEED FETCHING (via Vercel API proxy) ──────────────────────────────
+// ─── REAL FEED FETCHING ──────────────────────────────────────────────────────
 
 async function fetchFeedData() {
   try {
@@ -861,32 +697,44 @@ async function fetchFeedData() {
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [dark, setDark] = useState(() => {
-    try { return localStorage.getItem('theme') === 'dark' } catch { return false }
-  })
   const [tab, setTab] = useState(0)
   const [live, setLive] = useState(true)
-  const [events, setEvents] = useState(() => generateInitialEvents(150))
-  const [clock, setClock] = useState(formatUTC())
+  const [events, setEvents] = useState(() => generateInitialEvents(200))
+  const [clock, setClock] = useState(formatDateTime())
   const [sevFilter, setSevFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [feedData, setFeedData] = useState(null)
   const [selectedCountry, setSelectedCountry] = useState('')
-  const nextId = useRef(150)
+  const nextId = useRef(200)
 
-  const theme = dark ? DARK : LIGHT
+  // Rolling alert counters
+  const [alerts60s, setAlerts60s] = useState(rand(100000, 200000))
+  const [alerts1h, setAlerts1h] = useState(0)
+  const [alerts24h, setAlerts24h] = useState(0)
 
+  // Area chart history data
+  const [chartData] = useState(() => {
+    const data = []
+    for (let i = 0; i < 48; i++) data.push(rand(50, 350))
+    return data
+  })
+
+  // Clock + rolling counters
   useEffect(() => {
-    try { localStorage.setItem('theme', dark ? 'dark' : 'light') } catch {}
-  }, [dark])
-
-  // Clock
-  useEffect(() => {
-    const t = setInterval(() => setClock(formatUTC()), 1000)
+    const t = setInterval(() => {
+      setClock(formatDateTime())
+      setAlerts60s(prev => prev + rand(50, 500))
+    }, 1000)
     return () => clearInterval(t)
   }, [])
 
-  // Fetch real feed data from API on mount (refreshes every 5 min)
+  // Update 1h and 24h counters
+  useEffect(() => {
+    setAlerts1h(alerts60s * 60)
+    setAlerts24h(alerts60s * 1440)
+  }, [alerts60s])
+
+  // Fetch real feed data
   useEffect(() => {
     fetchFeedData().then(d => { if (d) setFeedData(d) })
     const interval = setInterval(() => {
@@ -903,11 +751,11 @@ export default function App() {
         const newEvt = generateEvent(nextId.current++)
         return [newEvt, ...prev].slice(0, 500)
       })
-    }, 2500)
+    }, 2000)
     return () => clearInterval(t)
   }, [live])
 
-  // Stats
+  // Computed stats
   const stats = useMemo(() => {
     const total = events.length
     const critical = events.filter(e => e.severity === 'critical').length
@@ -917,35 +765,40 @@ export default function App() {
     return { total, critical, high, uniqueIPs, honeypot, feeds: FEEDS.length }
   }, [events])
 
-  // Sparkline data
-  const sparkData = useMemo(() => {
-    const base = [12, 15, 11, 18, 14, 22, 19, 25, 21, 28, 24, 30, 27, 33, 29]
-    return {
-      total: base.map(v => v + rand(-3, 5)),
-      critical: base.map(v => Math.max(0, Math.floor(v * 0.05) + rand(-1, 1))),
-      high: base.map(v => Math.floor(v * 0.15) + rand(-1, 2)),
-      ips: base.map(v => v + rand(-2, 4)),
-      honeypot: base.map(v => Math.floor(v * 0.3) + rand(-2, 3)),
-      feeds: Array(15).fill(16),
-    }
-  }, [])
-
-  // Country counts
-  const countryCounts = useMemo(() => {
+  // Source countries (for bottom panel)
+  const sourceCountries = useMemo(() => {
     const map = {}
     events.forEach(e => {
       if (!map[e.country]) map[e.country] = { code: e.country, name: e.countryName, count: 0 }
       map[e.country].count++
     })
-    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 12)
+    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 8)
   }, [events])
 
-  const countryMax = countryCounts[0]?.count || 1
+  // Target countries
+  const targetCountries = useMemo(() => {
+    const map = {}
+    events.forEach(e => {
+      if (!map[e.dstCountry]) map[e.dstCountry] = { code: e.dstCountry, name: e.dstCountryName, count: 0 }
+      map[e.dstCountry].count++
+    })
+    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 8)
+  }, [events])
 
-  // Filtered events (includes country filter)
+  // Alert distribution (categories)
+  const alertDistribution = useMemo(() => {
+    const map = {}
+    events.forEach(e => {
+      const cat = e.category || 'Unclassified'
+      map[cat] = (map[cat] || 0) + 1
+    })
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  }, [events])
+
+  // Filtered events
   const filteredEvents = useMemo(() => {
     let f = events
-    if (selectedCountry) f = f.filter(e => e.country === selectedCountry)
+    if (selectedCountry) f = f.filter(e => e.country === selectedCountry || e.dstCountry === selectedCountry)
     if (sevFilter !== 'all') f = f.filter(e => e.severity === sevFilter)
     if (search) {
       const s = search.toLowerCase()
@@ -970,322 +823,333 @@ export default function App() {
     }))
   }, [events])
 
-  // ─── STYLES ──────────────────────────────────────────────────────────────
+  // Country flag emoji helper
+  const getFlag = useCallback((code) => {
+    if (!code || code.length !== 2) return ''
+    return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65))
+  }, [])
 
-  const s = {
-    app: {
-      minHeight: '100vh',
-      background: theme.bg,
-      color: theme.text,
-      fontFamily: FONTS.sans,
-      WebkitFontSmoothing: 'antialiased',
-      transition: 'background 0.3s, color 0.3s',
-    },
-    // Header — matches daniellegall.com exactly
-    header: {
-      position: 'sticky', top: 0, zIndex: 50,
-      background: theme.headerBg,
-      backdropFilter: 'blur(12px)',
-      WebkitBackdropFilter: 'blur(12px)',
-      borderBottom: `1px solid ${theme.border}`,
-      padding: '0 16px',
-    },
-    headerInner: {
-      maxWidth: 1280,
-      margin: '0 auto',
-      padding: '0 8px',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      height: 80,
-    },
-    headerLeft: { display: 'flex', alignItems: 'center', gap: 12 },
-    logoText: {
-      fontSize: 20, fontWeight: 700, letterSpacing: '-0.025em',
-      color: theme.logoText, fontFamily: FONTS.sans,
-      whiteSpace: 'nowrap',
-    },
-    headerRight: { display: 'flex', alignItems: 'center', gap: 16, fontSize: 13 },
-    statusDot: (color) => ({ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: color, marginRight: 5 }),
-    statusLabel: { fontSize: 14, fontWeight: 500, color: theme.navText, transition: 'color 0.2s' },
-    toggleBtn: {
-      padding: '8px 16px', borderRadius: 6,
-      background: live ? BRAND.blue : 'transparent',
-      border: live ? 'none' : `1px solid ${theme.border}`,
-      color: live ? '#fff' : theme.textSecondary,
-      fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FONTS.sans,
-      transition: 'all 0.2s',
-    },
-    themeBtn: {
-      width: 40, height: 40, borderRadius: 6,
-      border: `1px solid ${theme.border}`,
-      background: 'transparent', color: theme.textSecondary, cursor: 'pointer', fontSize: 18,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      transition: 'all 0.2s',
-    },
-    clock: { fontFamily: FONTS.mono, fontSize: 13, color: theme.textMuted, fontWeight: 500 },
-    // Tab nav
-    nav: {
-      display: 'flex', gap: 0,
-      borderBottom: `1px solid ${theme.border}`,
-      background: theme.bg,
-      maxWidth: 1280,
-      margin: '0 auto',
-      padding: '0 24px',
-    },
-    tabBtn: (active) => ({
-      padding: '14px 20px', fontSize: 14, fontWeight: active ? 600 : 500,
-      color: active ? theme.primary : theme.navText,
-      background: 'none', border: 'none', cursor: 'pointer',
-      borderBottom: active ? `2px solid ${theme.primary}` : '2px solid transparent',
-      transition: 'all 0.2s', fontFamily: FONTS.sans,
-    }),
-    main: { padding: '24px 24px', maxWidth: 1280, margin: '0 auto' },
-    statsRow: { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16, marginBottom: 24 },
-    statCard: {
-      background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16,
-      padding: '20px 20px 16px', transition: 'all 0.3s',
-      cursor: 'default',
-    },
-    statLabel: { fontSize: 11, color: theme.textMuted, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-    statValue: { fontSize: 28, fontWeight: 700, fontFamily: FONTS.mono, color: theme.text, lineHeight: 1 },
-    statSpark: { marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 },
-    threeCol: { display: 'grid', gridTemplateColumns: '440px 1fr 240px', gap: 20, marginBottom: 24 },
-    panel: {
-      background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16,
-      padding: 20, transition: 'all 0.3s',
-    },
-    panelTitle: { fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
-    table: { width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 },
-    th: {
-      textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: theme.textSecondary,
-      borderBottom: `1px solid ${theme.border}`, background: theme.tableHeader,
-      position: 'sticky', top: 0, zIndex: 2, fontFamily: FONTS.sans, fontSize: 11,
-      textTransform: 'uppercase', letterSpacing: 0.5,
-    },
-    td: {
-      padding: '9px 12px', borderBottom: `1px solid ${theme.border}`,
-      fontFamily: FONTS.mono, fontSize: 12, color: theme.textSecondary,
-    },
-    sevBadge: (sev) => {
-      const colors = {
-        critical: { bg: theme.criticalBg, color: theme.critical },
-        high: { bg: theme.highBg, color: theme.high },
-        medium: { bg: theme.mediumBg, color: theme.medium },
-        low: { bg: theme.lowBg, color: theme.low },
-        info: { bg: theme.infoBg, color: theme.info },
-      }
-      const c = colors[sev] || colors.info
-      return {
-        display: 'inline-block', padding: '2px 8px', borderRadius: 4,
-        fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
-        background: c.bg, color: c.color, letterSpacing: 0.5,
-      }
-    },
-    filterRow: { display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' },
-    filterBtn: (active) => ({
-      padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer',
-      border: `1px solid ${active ? theme.primary : theme.border}`,
-      background: active ? theme.primaryBg : 'transparent',
-      color: active ? theme.primary : theme.textSecondary,
-      transition: 'all 0.2s', fontFamily: FONTS.sans,
-    }),
-    searchInput: {
-      padding: '8px 14px', borderRadius: 8, border: `1px solid ${theme.border}`,
-      background: theme.surface, color: theme.text, fontSize: 13,
-      fontFamily: FONTS.mono, outline: 'none', width: 280,
-      transition: 'border-color 0.2s',
-    },
-    tableWrap: {
-      maxHeight: 420, overflowY: 'auto', borderRadius: 12,
-      border: `1px solid ${theme.border}`,
-    },
-    // Footer — matches daniellegall.com exactly
-    footer: {
-      background: BRAND.navy,
-      padding: '32px 16px',
-      textAlign: 'center',
-    },
-    footerText: {
-      color: '#94a3b8',
-      fontSize: 14,
-      fontFamily: FONTS.sans,
-    },
-    feedGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 },
-    feedCard: {
-      background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16,
-      padding: 20, transition: 'all 0.3s',
-    },
-    countrySelect: {
-      padding: '8px 14px', borderRadius: 8, border: `1px solid ${theme.border}`,
-      background: theme.surface, color: theme.text, fontSize: 13,
-      fontFamily: FONTS.sans, outline: 'none', cursor: 'pointer',
-      transition: 'border-color 0.2s',
-    },
+  // ─── RENDER ─────────────────────────────────────────────────────────────────
+
+  const sevBadge = (sev) => {
+    const colors = {
+      critical: { bg: THEME.criticalBg, color: THEME.critical },
+      high: { bg: THEME.highBg, color: THEME.high },
+      medium: { bg: THEME.mediumBg, color: THEME.medium },
+      low: { bg: THEME.lowBg, color: THEME.low },
+      info: { bg: THEME.infoBg, color: THEME.info },
+    }
+    const c = colors[sev] || colors.info
+    return {
+      display: 'inline-block', padding: '2px 8px', borderRadius: 4,
+      fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
+      background: c.bg, color: c.color, letterSpacing: 0.5,
+    }
   }
-
-  // ─── RENDER TABS ─────────────────────────────────────────────────────────
 
   const renderOverview = () => (
     <div style={{ animation: 'fadeIn 0.3s ease' }}>
-      {/* Country Filter */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <select
-          style={s.countrySelect}
-          value={selectedCountry}
-          onChange={e => setSelectedCountry(e.target.value)}
-        >
-          <option value="">All Countries</option>
-          {COUNTRIES.sort((a, b) => a.name.localeCompare(b.name)).map(c => (
-            <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
-          ))}
-        </select>
-        {selectedCountry && (
-          <button
-            style={{ ...s.filterBtn(false), fontSize: 12 }}
-            onClick={() => setSelectedCountry('')}
-          >
-            Clear Filter
-          </button>
-        )}
-        {selectedCountry && (
-          <span style={{ fontSize: 13, color: theme.textSecondary }}>
-            {filteredEvents.length} events from {COUNTRIES.find(c => c.code === selectedCountry)?.name}
-          </span>
-        )}
-      </div>
+      {/* Top section: counters left, map right */}
+      <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 0, marginBottom: 0 }}>
+        {/* Left: Real-time counters */}
+        <div style={{ padding: '24px 28px', borderRight: `1px solid ${THEME.border}` }}>
+          {/* DateTime */}
+          <div style={{ color: BRAND.magenta, fontFamily: FONTS.mono, fontSize: 15, fontWeight: 500, marginBottom: 12 }}>
+            {clock}
+          </div>
 
-      <div style={s.statsRow}>
-        {[
-          { label: 'Total Events', value: stats.total.toLocaleString(), data: sparkData.total, color: theme.primary },
-          { label: 'Critical Alerts', value: stats.critical, data: sparkData.critical, color: theme.critical },
-          { label: 'High Severity', value: stats.high, data: sparkData.high, color: theme.high },
-          { label: 'Unique Source IPs', value: stats.uniqueIPs, data: sparkData.ips, color: theme.primary },
-          { label: 'Honeypot Captures', value: stats.honeypot, data: sparkData.honeypot, color: theme.medium },
-          { label: 'Active Intel Feeds', value: stats.feeds, data: sparkData.feeds, color: theme.low },
-        ].map((c, i) => (
-          <div key={i} style={s.statCard} className="card-hover">
-            <div style={s.statLabel}>{c.label}</div>
-            <div style={s.statValue}>{c.value}</div>
-            <div style={s.statSpark}>
-              <Sparkline data={c.data} color={c.color} />
+          {/* Big counter */}
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ fontSize: 64, fontWeight: 700, fontFamily: FONTS.mono, color: THEME.text, lineHeight: 1 }}>
+              {alerts60s.toLocaleString()}
+            </div>
+            <div style={{ fontSize: 14, color: THEME.textSecondary, marginTop: 4 }}>
+              Alerts in <span style={{ color: BRAND.magenta, fontWeight: 600 }}>60 S</span>
             </div>
           </div>
-        ))}
-      </div>
 
-      <div style={s.threeCol}>
-        <div style={s.panel}>
-          <div style={s.panelTitle}>Attack Origins</div>
-          <Globe events={events} theme={theme} onCountryClick={setSelectedCountry} selectedCountry={selectedCountry} feedGeoIPs={feedData?.geolocatedIPs} />
-        </div>
-        <div style={s.panel}>
-          <div style={s.panelTitle}>Top Attack Vectors</div>
-          <AttackBarChart events={events} theme={theme} />
-        </div>
-        <div style={s.panel}>
-          <div style={s.panelTitle}>Source Countries</div>
-          {countryCounts.map(c => (
-            <div key={c.code} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ width: 28, fontSize: 12, fontFamily: FONTS.mono, color: theme.textSecondary }}>{c.code}</span>
-              <div style={{ flex: 1, height: 6, background: theme.surfaceHover, borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{
-                  width: `${(c.count / countryMax) * 100}%`, height: '100%',
-                  background: theme.primary, borderRadius: 3, transition: 'width 0.5s',
-                }} />
+          {/* Sub counters */}
+          <div style={{ display: 'flex', gap: 32, marginBottom: 32 }}>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 700, fontFamily: FONTS.mono, color: THEME.text }}>
+                {alerts1h.toLocaleString()}
               </div>
-              <span style={{ width: 28, fontSize: 11, fontFamily: FONTS.mono, color: theme.textMuted, textAlign: 'right' }}>{c.count}</span>
+              <div style={{ fontSize: 12, color: THEME.textSecondary }}>Alerts in <span style={{ color: BRAND.magenta }}>1 h</span></div>
             </div>
-          ))}
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 700, fontFamily: FONTS.mono, color: THEME.text }}>
+                {alerts24h.toLocaleString()}
+              </div>
+              <div style={{ fontSize: 12, color: THEME.textSecondary }}>Alerts in <span style={{ color: BRAND.magenta }}>24 h</span></div>
+            </div>
+          </div>
+
+          {/* Area chart */}
+          <div>
+            <div style={{ fontSize: 12, color: THEME.textSecondary, marginBottom: 8, fontWeight: 500 }}>
+              Average Alerts per Honeypot
+            </div>
+            <AlertAreaChart data={chartData} width={310} height={160} />
+          </div>
+
+          {/* Country filter */}
+          <div style={{ marginTop: 20 }}>
+            <select
+              value={selectedCountry}
+              onChange={e => setSelectedCountry(e.target.value)}
+              style={{
+                width: '100%', padding: '8px 12px', borderRadius: 6,
+                border: `1px solid ${THEME.border}`, background: THEME.surface,
+                color: THEME.text, fontSize: 13, fontFamily: FONTS.sans,
+                outline: 'none', cursor: 'pointer',
+              }}
+            >
+              <option value="">All Countries</option>
+              {COUNTRIES.sort((a, b) => a.name.localeCompare(b.name)).map(c => (
+                <option key={c.code} value={c.code}>{getFlag(c.code)} {c.name} ({c.code})</option>
+              ))}
+            </select>
+            {selectedCountry && (
+              <button
+                onClick={() => setSelectedCountry('')}
+                style={{
+                  marginTop: 8, padding: '4px 12px', borderRadius: 4,
+                  border: `1px solid ${THEME.border}`, background: 'transparent',
+                  color: THEME.textSecondary, fontSize: 11, cursor: 'pointer',
+                  fontFamily: FONTS.sans,
+                }}
+              >
+                Clear Filter ({filteredEvents.length} events)
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Right: World Map */}
+        <div style={{ padding: '16px 20px', overflow: 'hidden' }}>
+          <WorldMap
+            events={events}
+            onCountryClick={setSelectedCountry}
+            selectedCountry={selectedCountry}
+            feedGeoIPs={feedData?.geolocatedIPs}
+          />
         </div>
       </div>
 
-      <div style={s.panel}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={s.panelTitle}>Live Event Stream</div>
-          <div style={s.filterRow}>
-            {['all', ...SEVERITY_KEYS].map(f => (
-              <button key={f} style={s.filterBtn(sevFilter === f)} onClick={() => setSevFilter(f)}>
-                {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
+      {/* Bottom 4-panel grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1.5fr', gap: 0, borderTop: `1px solid ${THEME.border}` }}>
+        {/* Alert Distribution */}
+        <div style={{ padding: '16px 20px', borderRight: `1px solid ${THEME.border}` }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text, marginBottom: 12 }}>
+            Alert Distribution (60s)
           </div>
-        </div>
-        <div style={s.tableWrap}>
-          <table style={s.table}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr>
-                {['Time', 'Severity', 'Attack Type', 'Source IP', 'Country', 'Protocol', 'Port', 'Source', 'Confidence'].map(h => (
-                  <th key={h} style={s.th}>{h}</th>
-                ))}
+                <th style={{ textAlign: 'left', padding: '4px 0', color: THEME.textMuted, fontWeight: 500, fontSize: 11 }}>Color</th>
+                <th style={{ textAlign: 'left', padding: '4px 0', color: THEME.textMuted, fontWeight: 500, fontSize: 11 }}>Category</th>
+                <th style={{ textAlign: 'right', padding: '4px 0', color: THEME.textMuted, fontWeight: 500, fontSize: 11 }}>Count</th>
               </tr>
             </thead>
             <tbody>
-              {filteredEvents.slice(0, 50).map(e => (
-                <tr key={e.id} className="table-row-hover">
-                  <td style={s.td}>{formatTime(e.time)}</td>
-                  <td style={s.td}><span style={s.sevBadge(e.severity)}>{e.severity}</span></td>
-                  <td style={{ ...s.td, color: theme.text, fontFamily: FONTS.sans }}>{e.attackType}</td>
-                  <td style={s.td}>{e.srcIP}</td>
-                  <td style={{ ...s.td, fontFamily: FONTS.sans }}>{e.country}</td>
-                  <td style={s.td}>{e.protocol}</td>
-                  <td style={s.td}>{e.port}</td>
-                  <td style={{ ...s.td, fontFamily: FONTS.sans }}>{e.source}</td>
-                  <td style={s.td}>{e.confidence}%</td>
+              {alertDistribution.map(([cat, count], i) => {
+                const catDef = ALERT_CATEGORIES.find(c => c.name === cat) || ALERT_CATEGORIES[0]
+                return (
+                  <tr key={cat}>
+                    <td style={{ padding: '4px 0' }}>
+                      <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: catDef.color }} />
+                    </td>
+                    <td style={{ padding: '4px 0', color: THEME.textSecondary, fontFamily: FONTS.sans }}>{cat}</td>
+                    <td style={{ padding: '4px 0', textAlign: 'right', color: THEME.text, fontFamily: FONTS.mono, fontWeight: 500 }}>
+                      {count.toLocaleString()}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Source Countries */}
+        <div style={{ padding: '16px 20px', borderRight: `1px solid ${THEME.border}` }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text, marginBottom: 12 }}>
+            Source Countries (March)
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', padding: '4px 0', color: THEME.textMuted, fontWeight: 500, fontSize: 11 }}>Country</th>
+                <th style={{ textAlign: 'right', padding: '4px 0', color: THEME.textMuted, fontWeight: 500, fontSize: 11 }}>Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sourceCountries.map(c => (
+                <tr
+                  key={c.code}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setSelectedCountry(selectedCountry === c.code ? '' : c.code)}
+                >
+                  <td style={{ padding: '4px 0', color: THEME.textSecondary }}>
+                    <span style={{ marginRight: 6 }}>{getFlag(c.code)}</span>
+                    {c.code}
+                  </td>
+                  <td style={{ padding: '4px 0', textAlign: 'right', color: THEME.text, fontFamily: FONTS.mono, fontWeight: 500 }}>
+                    {(c.count * rand(800000, 1200000)).toLocaleString()}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Target Countries */}
+        <div style={{ padding: '16px 20px', borderRight: `1px solid ${THEME.border}` }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text, marginBottom: 12 }}>
+            Target Countries (March)
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', padding: '4px 0', color: THEME.textMuted, fontWeight: 500, fontSize: 11 }}>Country</th>
+                <th style={{ textAlign: 'right', padding: '4px 0', color: THEME.textMuted, fontWeight: 500, fontSize: 11 }}>Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {targetCountries.map(c => (
+                <tr
+                  key={c.code}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setSelectedCountry(selectedCountry === c.code ? '' : c.code)}
+                >
+                  <td style={{ padding: '4px 0', color: THEME.textSecondary }}>
+                    <span style={{ marginRight: 6 }}>{getFlag(c.code)}</span>
+                    {c.code}
+                  </td>
+                  <td style={{ padding: '4px 0', textAlign: 'right', color: THEME.text, fontFamily: FONTS.mono, fontWeight: 500 }}>
+                    {(c.count * rand(600000, 1000000)).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Alert Feed (live stream) */}
+        <div style={{ padding: '16px 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text }}>
+              Alert Feed ({filteredEvents.length} Samples)
+            </div>
+          </div>
+          <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr>
+                  {['Source', 'Target', 'Category', 'Metadata', 'Time'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', padding: '4px 6px', color: THEME.textMuted, fontWeight: 500, fontSize: 10, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEvents.slice(0, 20).map(e => (
+                  <tr key={e.id}>
+                    <td style={{ padding: '3px 6px', color: THEME.textSecondary, fontFamily: FONTS.sans, whiteSpace: 'nowrap' }}>
+                      {getFlag(e.country)} {e.country}
+                    </td>
+                    <td style={{ padding: '3px 6px', color: THEME.textSecondary, fontFamily: FONTS.sans, whiteSpace: 'nowrap' }}>
+                      {getFlag(e.dstCountry)} {e.dstCountry}
+                    </td>
+                    <td style={{ padding: '3px 6px', color: THEME.textSecondary, fontFamily: FONTS.sans }}>{e.category}</td>
+                    <td style={{ padding: '3px 6px', color: THEME.textMuted, fontFamily: FONTS.mono, fontSize: 10 }}>
+                      {e.attackType} on {e.port}/{e.protocol.toLowerCase()}
+                    </td>
+                    <td style={{ padding: '3px 6px', color: THEME.textMuted, fontFamily: FONTS.mono, fontSize: 10 }}>
+                      {formatTime(e.time)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
   )
 
   const renderThreatEvents = () => (
-    <div style={{ animation: 'fadeIn 0.3s ease' }}>
+    <div style={{ animation: 'fadeIn 0.3s ease', padding: 24 }}>
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
         <input
-          style={s.searchInput}
+          style={{
+            padding: '8px 14px', borderRadius: 8, border: `1px solid ${THEME.border}`,
+            background: THEME.surface, color: THEME.text, fontSize: 13,
+            fontFamily: FONTS.mono, outline: 'none', width: 280,
+          }}
           placeholder="Search IPs, attacks, feeds, MITRE..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <select style={s.countrySelect} value={selectedCountry} onChange={e => setSelectedCountry(e.target.value)}>
+        <select
+          style={{
+            padding: '8px 14px', borderRadius: 8, border: `1px solid ${THEME.border}`,
+            background: THEME.surface, color: THEME.text, fontSize: 13,
+            fontFamily: FONTS.sans, outline: 'none', cursor: 'pointer',
+          }}
+          value={selectedCountry}
+          onChange={e => setSelectedCountry(e.target.value)}
+        >
           <option value="">All Countries</option>
           {COUNTRIES.sort((a, b) => a.name.localeCompare(b.name)).map(c => (
             <option key={c.code} value={c.code}>{c.name}</option>
           ))}
         </select>
-        {['all', ...SEVERITY_KEYS].map(f => (
-          <button key={f} style={s.filterBtn(sevFilter === f)} onClick={() => setSevFilter(f)}>
+        {['all', 'critical', 'high', 'medium', 'low', 'info'].map(f => (
+          <button
+            key={f}
+            onClick={() => setSevFilter(f)}
+            style={{
+              padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+              border: `1px solid ${sevFilter === f ? BRAND.magenta : THEME.border}`,
+              background: sevFilter === f ? BRAND.magentaBg : 'transparent',
+              color: sevFilter === f ? BRAND.magenta : THEME.textSecondary,
+              fontFamily: FONTS.sans,
+            }}
+          >
             {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
         ))}
-        <span style={{ fontSize: 12, color: theme.textMuted, marginLeft: 'auto' }}>
+        <span style={{ fontSize: 12, color: THEME.textMuted, marginLeft: 'auto' }}>
           {filteredEvents.length} events
         </span>
       </div>
-      <div style={{ ...s.tableWrap, maxHeight: 600 }}>
-        <table style={s.table}>
+      <div style={{ maxHeight: 600, overflowY: 'auto', borderRadius: 12, border: `1px solid ${THEME.border}` }}>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
           <thead>
             <tr>
               {['Time', 'Severity', 'Attack Type', 'Src IP', 'Dst IP', 'Protocol', 'Port', 'MITRE', 'Feed Source', 'Confidence', 'Detection'].map(h => (
-                <th key={h} style={s.th}>{h}</th>
+                <th key={h} style={{
+                  textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: THEME.textSecondary,
+                  borderBottom: `1px solid ${THEME.border}`, background: THEME.surfaceAlt,
+                  position: 'sticky', top: 0, zIndex: 2, fontSize: 11,
+                  textTransform: 'uppercase', letterSpacing: 0.5, fontFamily: FONTS.sans,
+                }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filteredEvents.slice(0, 100).map(e => (
               <tr key={e.id} className="table-row-hover">
-                <td style={s.td}>{formatTime(e.time)}</td>
-                <td style={s.td}><span style={s.sevBadge(e.severity)}>{e.severity}</span></td>
-                <td style={{ ...s.td, color: theme.text, fontFamily: FONTS.sans }}>{e.attackType}</td>
-                <td style={s.td}>{e.srcIP}</td>
-                <td style={s.td}>{e.dstIP}</td>
-                <td style={s.td}>{e.protocol}</td>
-                <td style={s.td}>{e.port}</td>
-                <td style={{ ...s.td, color: theme.primary }}>{e.mitre}</td>
-                <td style={{ ...s.td, fontFamily: FONTS.sans }}>{e.feed}</td>
-                <td style={s.td}>{e.confidence}%</td>
-                <td style={{ ...s.td, fontFamily: FONTS.sans }}>{e.source}</td>
+                <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, fontSize: 12, color: THEME.textSecondary }}>{formatTime(e.time)}</td>
+                <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}` }}><span style={sevBadge(e.severity)}>{e.severity}</span></td>
+                <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, color: THEME.text, fontFamily: FONTS.sans, fontSize: 12 }}>{e.attackType}</td>
+                <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, fontSize: 12, color: THEME.textSecondary }}>{e.srcIP}</td>
+                <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, fontSize: 12, color: THEME.textSecondary }}>{e.dstIP}</td>
+                <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, fontSize: 12, color: THEME.textSecondary }}>{e.protocol}</td>
+                <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, fontSize: 12, color: THEME.textSecondary }}>{e.port}</td>
+                <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, fontSize: 12, color: BRAND.magenta }}>{e.mitre}</td>
+                <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.sans, fontSize: 12, color: THEME.textSecondary }}>{e.feed}</td>
+                <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, fontSize: 12, color: THEME.textSecondary }}>{e.confidence}%</td>
+                <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.sans, fontSize: 12, color: THEME.textSecondary }}>{e.source}</td>
               </tr>
             ))}
           </tbody>
@@ -1295,23 +1159,29 @@ export default function App() {
   )
 
   const renderHoneypot = () => (
-    <div style={{ animation: 'fadeIn 0.3s ease' }}>
+    <div style={{ animation: 'fadeIn 0.3s ease', padding: 24 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         {[
-          { label: 'Status', value: 'ONLINE', color: theme.low },
-          { label: 'Active Sessions', value: events.filter(e => e.source === 'T-Pot Honeypot').slice(0, 30).filter(() => Math.random() > 0.7).length, color: theme.primary },
-          { label: 'Total Sessions', value: events.filter(e => e.source === 'T-Pot Honeypot').length, color: theme.primary },
-          { label: 'Malware Captured', value: rand(8, 24), color: theme.critical },
+          { label: 'Status', value: 'ONLINE', color: THEME.low },
+          { label: 'Active Sessions', value: events.filter(e => e.source === 'T-Pot Honeypot').slice(0, 30).filter(() => Math.random() > 0.7).length, color: BRAND.magenta },
+          { label: 'Total Sessions', value: events.filter(e => e.source === 'T-Pot Honeypot').length, color: BRAND.magenta },
+          { label: 'Malware Captured', value: rand(8, 24), color: THEME.critical },
         ].map((c, i) => (
-          <div key={i} style={s.statCard} className="card-hover">
-            <div style={s.statLabel}>{c.label}</div>
-            <div style={{ ...s.statValue, color: c.color }}>{c.value}</div>
+          <div key={i} style={{
+            background: THEME.surface, border: `1px solid ${THEME.border}`, borderRadius: 12,
+            padding: '20px', cursor: 'default',
+          }} className="card-hover">
+            <div style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>{c.label}</div>
+            <div style={{ fontSize: 28, fontWeight: 700, fontFamily: FONTS.mono, color: c.color, lineHeight: 1 }}>{c.value}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ ...s.panel, marginBottom: 24 }}>
-        <div style={s.panelTitle}>Honeypot Integration</div>
+      <div style={{
+        background: THEME.surface, border: `1px solid ${THEME.border}`, borderRadius: 12,
+        padding: 20, marginBottom: 24,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>Honeypot Integration</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
           {[
             { label: 'Platform', value: 'T-Pot CE Docker' },
@@ -1320,39 +1190,44 @@ export default function App() {
             { label: 'Log Pipeline', value: 'Logstash + Elasticsearch' },
           ].map((item, i) => (
             <div key={i}>
-              <div style={{ fontSize: 11, color: theme.textMuted, textTransform: 'uppercase', marginBottom: 4, letterSpacing: 0.5, fontWeight: 600 }}>{item.label}</div>
-              <div style={{ fontSize: 13, color: theme.text, fontWeight: 500 }}>{item.value}</div>
+              <div style={{ fontSize: 11, color: THEME.textMuted, textTransform: 'uppercase', marginBottom: 4, letterSpacing: 0.5, fontWeight: 600 }}>{item.label}</div>
+              <div style={{ fontSize: 13, color: THEME.text, fontWeight: 500 }}>{item.value}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div style={s.panel}>
-        <div style={s.panelTitle}>Sessions</div>
-        <div style={{ ...s.tableWrap, maxHeight: 500 }}>
-          <table style={s.table}>
+      <div style={{ background: THEME.surface, border: `1px solid ${THEME.border}`, borderRadius: 12, padding: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>Sessions</div>
+        <div style={{ maxHeight: 500, overflowY: 'auto', borderRadius: 8, border: `1px solid ${THEME.border}` }}>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
             <thead>
               <tr>
                 {['Time', 'Source IP', 'Country', 'Protocol', 'Credentials', 'Commands', 'Duration', 'Malware', 'Status'].map(h => (
-                  <th key={h} style={s.th}>{h}</th>
+                  <th key={h} style={{
+                    textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: THEME.textSecondary,
+                    borderBottom: `1px solid ${THEME.border}`, background: THEME.surfaceAlt,
+                    position: 'sticky', top: 0, zIndex: 2, fontSize: 11,
+                    textTransform: 'uppercase', letterSpacing: 0.5, fontFamily: FONTS.sans,
+                  }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {honeypotSessions.map((e, i) => (
                 <tr key={i} className="table-row-hover">
-                  <td style={s.td}>{formatTime(e.time)}</td>
-                  <td style={s.td}>{e.srcIP}</td>
-                  <td style={{ ...s.td, fontFamily: FONTS.sans }}>{e.country}</td>
-                  <td style={s.td}>{e.protocol}</td>
-                  <td style={{ ...s.td, fontSize: 11 }}>{e.credentials}</td>
-                  <td style={{ ...s.td, fontSize: 11, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.commands}</td>
-                  <td style={s.td}>{e.duration}</td>
-                  <td style={s.td}>
-                    <span style={s.sevBadge(e.malware === 'YES' ? 'critical' : 'low')}>{e.malware}</span>
+                  <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, color: THEME.textSecondary }}>{formatTime(e.time)}</td>
+                  <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, color: THEME.textSecondary }}>{e.srcIP}</td>
+                  <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.sans, color: THEME.textSecondary }}>{e.country}</td>
+                  <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, color: THEME.textSecondary }}>{e.protocol}</td>
+                  <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, color: THEME.textSecondary, fontSize: 11 }}>{e.credentials}</td>
+                  <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, color: THEME.textSecondary, fontSize: 11, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.commands}</td>
+                  <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, color: THEME.textSecondary }}>{e.duration}</td>
+                  <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}` }}>
+                    <span style={sevBadge(e.malware === 'YES' ? 'critical' : 'low')}>{e.malware}</span>
                   </td>
-                  <td style={s.td}>
-                    <span style={s.sevBadge(e.status === 'active' ? 'high' : e.status === 'suspicious' ? 'medium' : 'info')}>{e.status}</span>
+                  <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}` }}>
+                    <span style={sevBadge(e.status === 'active' ? 'high' : e.status === 'suspicious' ? 'medium' : 'info')}>{e.status}</span>
                   </td>
                 </tr>
               ))}
@@ -1364,7 +1239,6 @@ export default function App() {
   )
 
   const renderIntelFeeds = () => {
-    // Merge real API data with local feed list
     const apiFeedMap = {}
     if (feedData?.feeds) {
       feedData.feeds.forEach(f => { apiFeedMap[f.id] = f })
@@ -1372,89 +1246,100 @@ export default function App() {
     const simFeedCounts = {}
     events.forEach(e => { simFeedCounts[e.feed] = (simFeedCounts[e.feed] || 0) + 1 })
 
-    // Country-filtered IoCs from real feed data
     const countryIoCs = selectedCountry && feedData?.countryBreakdown
       ? feedData.countryBreakdown.find(c => c.code === selectedCountry)
       : null
 
     return (
-      <div style={{ animation: 'fadeIn 0.3s ease' }}>
-        {/* Country filter for Intel Feeds */}
+      <div style={{ animation: 'fadeIn 0.3s ease', padding: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <select style={s.countrySelect} value={selectedCountry} onChange={e => setSelectedCountry(e.target.value)}>
+          <select
+            value={selectedCountry}
+            onChange={e => setSelectedCountry(e.target.value)}
+            style={{
+              padding: '8px 14px', borderRadius: 8, border: `1px solid ${THEME.border}`,
+              background: THEME.surface, color: THEME.text, fontSize: 13,
+              fontFamily: FONTS.sans, outline: 'none', cursor: 'pointer',
+            }}
+          >
             <option value="">All Countries</option>
             {COUNTRIES.sort((a, b) => a.name.localeCompare(b.name)).map(c => (
               <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
             ))}
           </select>
           {selectedCountry && (
-            <button style={{ ...s.filterBtn(false), fontSize: 12 }} onClick={() => setSelectedCountry('')}>
+            <button
+              onClick={() => setSelectedCountry('')}
+              style={{
+                padding: '6px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                border: `1px solid ${THEME.border}`, background: 'transparent',
+                color: THEME.textSecondary, fontFamily: FONTS.sans,
+              }}
+            >
               Clear Filter
             </button>
           )}
           {selectedCountry && countryIoCs && (
-            <span style={{ fontSize: 13, color: theme.textSecondary }}>
+            <span style={{ fontSize: 13, color: THEME.textSecondary }}>
               {countryIoCs.count} malicious IPs from {countryIoCs.name}
-            </span>
-          )}
-          {selectedCountry && !countryIoCs && feedData && (
-            <span style={{ fontSize: 13, color: theme.textMuted }}>
-              No feed IoCs geolocated to {COUNTRIES.find(c => c.code === selectedCountry)?.name || selectedCountry}
             </span>
           )}
         </div>
 
         {feedData && (
-          <div style={{ ...s.panel, marginBottom: 20, display: 'flex', gap: 32, alignItems: 'center' }}>
+          <div style={{
+            background: THEME.surface, border: `1px solid ${THEME.border}`, borderRadius: 12,
+            padding: 20, marginBottom: 20, display: 'flex', gap: 40, alignItems: 'center',
+          }}>
             <div>
-              <div style={{ fontSize: 11, color: theme.textMuted, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5, marginBottom: 4 }}>Total Live IoCs</div>
-              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: FONTS.mono, color: theme.primary }}>{feedData.totalIoCs.toLocaleString()}</div>
+              <div style={{ fontSize: 11, color: THEME.textMuted, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5, marginBottom: 4 }}>Total Live IoCs</div>
+              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: FONTS.mono, color: BRAND.magenta }}>{feedData.totalIoCs.toLocaleString()}</div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: theme.textMuted, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5, marginBottom: 4 }}>Active Feeds</div>
-              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: FONTS.mono, color: theme.low }}>{feedData.feeds.filter(f => f.status === 'active').length}</div>
+              <div style={{ fontSize: 11, color: THEME.textMuted, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5, marginBottom: 4 }}>Active Feeds</div>
+              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: FONTS.mono, color: THEME.low }}>{feedData.feeds.filter(f => f.status === 'active').length}</div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: theme.textMuted, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5, marginBottom: 4 }}>Last Sync</div>
-              <div style={{ fontSize: 14, fontWeight: 500, fontFamily: FONTS.mono, color: theme.textSecondary }}>{new Date(feedData.timestamp).toLocaleTimeString()}</div>
+              <div style={{ fontSize: 11, color: THEME.textMuted, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5, marginBottom: 4 }}>Last Sync</div>
+              <div style={{ fontSize: 14, fontWeight: 500, fontFamily: FONTS.mono, color: THEME.textSecondary }}>{new Date(feedData.timestamp).toLocaleTimeString()}</div>
             </div>
           </div>
         )}
-        <div style={s.feedGrid}>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
           {FEEDS.map(feed => {
             const apiData = apiFeedMap[feed.id]
             const isLive = apiData?.status === 'active'
-            // When country is selected, show country-specific count from that feed
             const countryCount = selectedCountry && apiData?.countries
               ? apiData.countries.find(c => c.code === selectedCountry)?.count
               : null
             const displayCount = countryCount != null
               ? countryCount
               : (isLive ? apiData.count : (simFeedCounts[feed.name] || rand(10, 200)))
-            const statusColor = isLive ? theme.low : (apiData?.status === 'error' ? theme.critical : theme.textMuted)
+            const statusColor = isLive ? THEME.low : (apiData?.status === 'error' ? THEME.critical : THEME.textMuted)
             return (
-              <div key={feed.id} style={s.feedCard} className="card-hover">
+              <div key={feed.id} style={{
+                background: THEME.surface, border: `1px solid ${THEME.border}`, borderRadius: 12,
+                padding: 20,
+              }} className="card-hover">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: theme.text, marginBottom: 4 }}>{feed.name}</div>
-                    <div style={{ fontSize: 12, color: theme.textSecondary }}>{feed.type}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: THEME.text, marginBottom: 4 }}>{feed.name}</div>
+                    <div style={{ fontSize: 12, color: THEME.textSecondary }}>{feed.type}</div>
                   </div>
-                  <div style={{
-                    width: 10, height: 10, borderRadius: '50%',
-                    background: CATEGORY_COLORS[feed.category],
-                  }} />
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: CATEGORY_COLORS[feed.category] }} />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <div style={{ fontSize: 20, fontWeight: 700, fontFamily: FONTS.mono, color: theme.text }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, fontFamily: FONTS.mono, color: THEME.text }}>
                       {displayCount != null ? displayCount.toLocaleString() : '\u2014'}
                     </div>
-                    <div style={{ fontSize: 11, color: theme.textMuted }}>{countryCount != null ? `IoCs in ${selectedCountry}` : (isLive ? 'live IoCs' : 'events')}</div>
+                    <div style={{ fontSize: 11, color: THEME.textMuted }}>{countryCount != null ? `IoCs in ${selectedCountry}` : (isLive ? 'live IoCs' : 'events')}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 11, color: statusColor, fontWeight: 600 }}>{isLive ? 'LIVE' : (apiData?.status === 'error' ? 'ERROR' : 'ACTIVE')}</div>
                     {apiData?.lastSync && (
-                      <div style={{ fontSize: 10, color: theme.textMuted, fontFamily: FONTS.mono }}>
+                      <div style={{ fontSize: 10, color: THEME.textMuted, fontFamily: FONTS.mono }}>
                         {new Date(apiData.lastSync).toLocaleTimeString()}
                       </div>
                     )}
@@ -1465,27 +1350,32 @@ export default function App() {
           })}
         </div>
 
-        <div style={s.panel}>
-          <div style={s.panelTitle}>Feed Endpoints</div>
-          <div style={s.tableWrap}>
-            <table style={s.table}>
+        <div style={{ background: THEME.surface, border: `1px solid ${THEME.border}`, borderRadius: 12, padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>Feed Endpoints</div>
+          <div style={{ maxHeight: 420, overflowY: 'auto', borderRadius: 8, border: `1px solid ${THEME.border}` }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
               <thead>
                 <tr>
                   {['Name', 'URL', 'Type', 'Category'].map(h => (
-                    <th key={h} style={s.th}>{h}</th>
+                    <th key={h} style={{
+                      textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: THEME.textSecondary,
+                      borderBottom: `1px solid ${THEME.border}`, background: THEME.surfaceAlt,
+                      position: 'sticky', top: 0, zIndex: 2, fontSize: 11,
+                      textTransform: 'uppercase', letterSpacing: 0.5, fontFamily: FONTS.sans,
+                    }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {FEEDS.map(feed => (
                   <tr key={feed.id} className="table-row-hover">
-                    <td style={{ ...s.td, fontWeight: 500, color: theme.text, fontFamily: FONTS.sans }}>{feed.name}</td>
-                    <td style={{ ...s.td, fontSize: 11, maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{feed.url}</td>
-                    <td style={{ ...s.td, fontFamily: FONTS.sans }}>{feed.type}</td>
-                    <td style={s.td}>
+                    <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontWeight: 500, color: THEME.text, fontFamily: FONTS.sans }}>{feed.name}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.mono, fontSize: 11, color: THEME.textSecondary, maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{feed.url}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}`, fontFamily: FONTS.sans, color: THEME.textSecondary }}>{feed.type}</td>
+                    <td style={{ padding: '9px 12px', borderBottom: `1px solid ${THEME.border}` }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: CATEGORY_COLORS[feed.category] }} />
-                        <span style={{ fontFamily: FONTS.sans, textTransform: 'capitalize' }}>{feed.category}</span>
+                        <span style={{ fontFamily: FONTS.sans, textTransform: 'capitalize', color: THEME.textSecondary }}>{feed.category}</span>
                       </span>
                     </td>
                   </tr>
@@ -1501,9 +1391,15 @@ export default function App() {
   const tabContent = [renderOverview, renderThreatEvents, renderHoneypot, renderIntelFeeds]
 
   return (
-    <div style={s.app}>
+    <div style={{
+      minHeight: '100vh',
+      background: THEME.bg,
+      color: THEME.text,
+      fontFamily: FONTS.sans,
+      WebkitFontSmoothing: 'antialiased',
+    }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Poppins:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: translateY(0); }
@@ -1512,69 +1408,103 @@ export default function App() {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
         }
-        .pulse-ring {
-          animation: pulse 2s ease-in-out infinite;
-        }
-        .card-hover {
-          transition: all 0.3s ease;
-        }
+        .card-hover { transition: all 0.3s ease; }
         .card-hover:hover {
-          transform: translateY(-3px);
-          box-shadow: ${theme.shadowLg};
-          border-color: ${theme.primaryLight} !important;
+          transform: translateY(-2px);
+          box-shadow: 0 8px 24px rgba(233,30,140,0.08);
+          border-color: ${BRAND.magenta}40 !important;
         }
         .table-row-hover:hover td {
-          background: ${theme.tableRowHover};
+          background: ${THEME.surfaceHover};
         }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: ${theme.primary}40; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: ${theme.primary}70; }
-        * { scrollbar-width: thin; scrollbar-color: ${theme.primary}40 transparent; }
+        ::-webkit-scrollbar-thumb { background: ${BRAND.magenta}30; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: ${BRAND.magenta}60; }
+        * { scrollbar-width: thin; scrollbar-color: ${BRAND.magenta}30 transparent; }
+        body { margin: 0; padding: 0; }
       `}</style>
 
-      {/* Header — exact daniellegall.com style */}
-      <header style={s.header}>
-        <div style={s.headerInner}>
-          <div style={s.headerLeft}>
-            <LogoIcon dark={dark} />
-            <span style={s.logoText}>
-              DANIEL{' '}<span style={{ color: BRAND.blue }}>LEGALL</span>
+      {/* Header */}
+      <header style={{
+        position: 'sticky', top: 0, zIndex: 50,
+        background: 'rgba(13,13,20,0.95)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderBottom: `1px solid ${THEME.border}`,
+        padding: '0 24px',
+      }}>
+        <div style={{
+          maxWidth: 1440, margin: '0 auto',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          height: 64,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <LogoIcon />
+            <span style={{ fontSize: 18, fontWeight: 700, color: BRAND.magenta, fontFamily: FONTS.sans, letterSpacing: '-0.02em' }}>
+              Threat Command
             </span>
-            <span style={{ width: 1, height: 24, background: theme.border, margin: '0 8px' }} />
-            <span style={{ fontSize: 14, fontWeight: 500, color: theme.navText }}>Threat Dashboard</span>
           </div>
-          <div style={s.headerRight}>
-            <span style={s.statusLabel}><span style={s.statusDot(theme.low)} />T-Pot</span>
-            <span style={s.statusLabel}><span style={s.statusDot(theme.low)} />{feedData ? feedData.feeds.filter(f => f.status === 'active').length : FEEDS.length} Feeds</span>
-            <button style={s.toggleBtn} onClick={() => setLive(!live)}>
+
+          {/* Tab nav integrated in header */}
+          <div style={{ display: 'flex', gap: 0 }}>
+            {TABS.map((t, i) => (
+              <button
+                key={t}
+                onClick={() => setTab(i)}
+                style={{
+                  padding: '20px 20px', fontSize: 14, fontWeight: tab === i ? 600 : 400,
+                  color: tab === i ? BRAND.magenta : THEME.textSecondary,
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  borderBottom: tab === i ? `2px solid ${BRAND.magenta}` : '2px solid transparent',
+                  fontFamily: FONTS.sans, transition: 'all 0.2s',
+                }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: THEME.textSecondary }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: THEME.low }} />
+              T-Pot
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: THEME.textSecondary }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: THEME.low }} />
+              {feedData ? feedData.feeds.filter(f => f.status === 'active').length : FEEDS.length} Feeds
+            </span>
+            <button
+              onClick={() => setLive(!live)}
+              style={{
+                padding: '6px 14px', borderRadius: 6,
+                background: live ? BRAND.magenta : 'transparent',
+                border: live ? 'none' : `1px solid ${THEME.border}`,
+                color: live ? '#fff' : THEME.textSecondary,
+                fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: FONTS.sans,
+              }}
+            >
               {live ? '\u25CF LIVE' : '\u25CB PAUSED'}
             </button>
-            <button style={s.themeBtn} onClick={() => setDark(!dark)} title="Toggle theme">
-              {dark ? '\u2600' : '\u263E'}
-            </button>
-            <span style={s.clock}>{clock}</span>
           </div>
         </div>
       </header>
 
-      {/* Tab Nav */}
-      <nav style={{ borderBottom: `1px solid ${theme.border}`, background: theme.bg }}>
-        <div style={s.nav}>
-          {TABS.map((t, i) => (
-            <button key={t} style={s.tabBtn(tab === i)} onClick={() => setTab(i)}>{t}</button>
-          ))}
-        </div>
-      </nav>
-
       {/* Main Content */}
-      <main style={s.main}>
+      <main style={{ maxWidth: 1440, margin: '0 auto' }}>
         {tabContent[tab]()}
       </main>
 
-      {/* Footer — exact daniellegall.com style */}
-      <footer style={s.footer}>
-        <p style={s.footerText}>&copy; 2026 Daniel Legall. All rights reserved.</p>
+      {/* Footer */}
+      <footer style={{
+        background: '#080810',
+        padding: '24px 16px',
+        textAlign: 'center',
+        borderTop: `1px solid ${THEME.border}`,
+      }}>
+        <p style={{ color: THEME.textMuted, fontSize: 13, fontFamily: FONTS.sans, margin: 0 }}>
+          &copy; 2026 Daniel Legall &mdash; threat.daniellegall.com
+        </p>
       </footer>
     </div>
   )
