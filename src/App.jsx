@@ -347,6 +347,7 @@ function pickSeverity() {
 
 function generateEvent(id) {
   const country = pick(COUNTRIES)
+  const dstCountry = pick(COUNTRIES)
   const severity = pickSeverity()
   return {
     id,
@@ -359,6 +360,10 @@ function generateEvent(id) {
     countryName: country.name,
     lat: country.lat + (Math.random() - 0.5) * 5,
     lon: country.lon + (Math.random() - 0.5) * 5,
+    dstCountry: dstCountry.code,
+    dstCountryName: dstCountry.name,
+    dstLat: dstCountry.lat + (Math.random() - 0.5) * 5,
+    dstLon: dstCountry.lon + (Math.random() - 0.5) * 5,
     protocol: pick(PROTOCOLS),
     port: pick([22, 23, 25, 53, 80, 110, 143, 443, 445, 993, 1433, 1883, 3306, 3389, 5060, 5432, 5900, 6379, 8080, 8443, 8888, 9200, 27017, 44818, 47808, 502]),
     source: pick(DETECTION_SOURCES),
@@ -422,10 +427,7 @@ function Sparkline({ data, color, width = 80, height = 28 }) {
   return <svg ref={ref} width={width} height={height} />
 }
 
-// ─── GLOBE COMPONENT (Real Geography + Attack Arcs) ─────────────────────────
-
-// Destination point for attack lines (user's network — US East Coast)
-const DEST_COORDS = [-77.0, 38.9] // Washington DC area
+// ─── GLOBE COMPONENT (Satellite Imagery + Multi-Directional Attack Arcs) ─────
 
 let worldDataCache = null
 async function loadWorldData() {
@@ -435,24 +437,103 @@ async function loadWorldData() {
   return worldDataCache
 }
 
+let satelliteImgCache = null
+let satelliteImgDataCache = null
+function loadSatelliteImage() {
+  return new Promise((resolve) => {
+    if (satelliteImgCache && satelliteImgDataCache) {
+      resolve({ img: satelliteImgCache, data: satelliteImgDataCache })
+      return
+    }
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const c = document.createElement('canvas')
+      c.width = img.width
+      c.height = img.height
+      const ctx = c.getContext('2d')
+      ctx.drawImage(img, 0, 0)
+      const imgData = ctx.getImageData(0, 0, img.width, img.height)
+      satelliteImgCache = img
+      satelliteImgDataCache = imgData
+      resolve({ img, data: imgData })
+    }
+    img.onerror = () => resolve(null)
+    img.src = 'https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57752/land_shallow_topo_2048.jpg'
+  })
+}
+
+function renderSatelliteCanvas(canvas, projection, imgData, imgWidth, imgHeight, renderSize) {
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+  // Render at reduced resolution for performance
+  const outCanvas = document.createElement('canvas')
+  outCanvas.width = renderSize
+  outCanvas.height = renderSize
+  const outCtx = outCanvas.getContext('2d')
+
+  const output = outCtx.createImageData(renderSize, renderSize)
+  const cx = renderSize / 2, cy = renderSize / 2
+  const r = 180 * (renderSize / 400)
+
+  for (let y = 0; y < renderSize; y++) {
+    for (let x = 0; x < renderSize; x++) {
+      const dx = x - cx, dy = y - cy
+      if (dx * dx + dy * dy > r * r) continue
+
+      // Map pixel back to real coordinates using full-size projection
+      const realX = x / (renderSize / 400)
+      const realY = y / (renderSize / 400)
+      const coords = projection.invert([realX, realY])
+      if (!coords) continue
+
+      const [lon, lat] = coords
+      const ix = Math.floor(((lon + 180) / 360) * imgWidth) % imgWidth
+      const iy = Math.floor(((90 - lat) / 180) * imgHeight)
+
+      if (iy < 0 || iy >= imgHeight || ix < 0) continue
+
+      const srcIdx = (iy * imgWidth + ix) * 4
+      const dstIdx = (y * renderSize + x) * 4
+      output.data[dstIdx] = imgData.data[srcIdx]
+      output.data[dstIdx + 1] = imgData.data[srcIdx + 1]
+      output.data[dstIdx + 2] = imgData.data[srcIdx + 2]
+      output.data[dstIdx + 3] = 255
+    }
+  }
+  outCtx.putImageData(output, 0, 0)
+
+  // Scale up to full canvas size
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(outCanvas, 0, 0, canvas.width, canvas.height)
+}
+
 function Globe({ events, theme, onCountryClick, selectedCountry, feedGeoIPs }) {
-  const ref = useRef()
+  const svgRef = useRef()
+  const canvasRef = useRef()
   const rotationRef = useRef([-20, -20, 0])
   const worldRef = useRef(null)
+  const satDataRef = useRef(null)
   const size = 400
+  const renderQualityRef = useRef(200) // half-res for performance, full=400
 
-  // Load world data once
+  // Load world data and satellite image
   useEffect(() => {
     loadWorldData().then(data => {
       worldRef.current = data
-      // Force re-render by updating ref — the main effect will pick it up
-      if (ref.current) ref.current.setAttribute('data-loaded', 'true')
+      if (svgRef.current) svgRef.current.setAttribute('data-loaded', 'true')
+    })
+    loadSatelliteImage().then(result => {
+      satDataRef.current = result
+      if (canvasRef.current) canvasRef.current.setAttribute('data-sat', 'true')
     })
   }, [])
 
   useEffect(() => {
-    if (!ref.current) return
-    const svg = d3.select(ref.current)
+    if (!svgRef.current || !canvasRef.current) return
+    const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
 
     const projection = d3.geoOrthographic()
@@ -463,44 +544,30 @@ function Globe({ events, theme, onCountryClick, selectedCountry, feedGeoIPs }) {
 
     const path = d3.geoPath().projection(projection)
 
-    // Defs
-    const defs = svg.append('defs')
-    const radial = defs.append('radialGradient').attr('id', 'globe-glow')
-    radial.append('stop').attr('offset', '0%').attr('stop-color', theme.primary).attr('stop-opacity', 0.15)
-    radial.append('stop').attr('offset', '100%').attr('stop-color', theme.primary).attr('stop-opacity', 0)
+    // Render satellite canvas
+    function renderCanvas(quality) {
+      if (!satDataRef.current || !canvasRef.current) return
+      const { data: imgData, img } = satDataRef.current
+      renderSatelliteCanvas(canvasRef.current, projection, imgData, img.width, img.height, quality || renderQualityRef.current)
+    }
+    renderCanvas(200)
 
+    // Defs for glow effects
+    const defs = svg.append('defs')
     const dotFilter = defs.append('filter').attr('id', 'dot-glow')
     dotFilter.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', 3)
 
-    // Ocean glow
-    svg.append('circle').attr('cx', size / 2).attr('cy', size / 2).attr('r', 192).attr('fill', 'url(#globe-glow)')
-
-    // Ocean sphere
+    // Transparent globe circle (for drag interaction — no fill since satellite is behind)
     const globeCircle = svg.append('circle')
       .attr('cx', size / 2).attr('cy', size / 2).attr('r', 180)
-      .attr('fill', theme.surface)
-      .attr('stroke', theme.border)
-      .attr('stroke-width', 0.5)
+      .attr('fill', 'transparent')
       .style('cursor', 'grab')
 
-    // Graticule
-    const graticuleGroup = svg.append('g')
-    function renderGraticule() {
-      graticuleGroup.selectAll('*').remove()
-      graticuleGroup.append('path')
-        .datum(d3.geoGraticule()())
-        .attr('d', path)
-        .attr('fill', 'none')
-        .attr('stroke', theme.primary)
-        .attr('stroke-opacity', 0.06)
-        .attr('stroke-width', 0.4)
-    }
-    renderGraticule()
-
-    // Land group — real country shapes
+    // If satellite not loaded yet, draw fallback land
     const landGroup = svg.append('g')
     function renderLand() {
       landGroup.selectAll('*').remove()
+      if (satDataRef.current) return // satellite loaded, no need for vector fallback
       if (!worldRef.current) return
       const countries = topojson.feature(worldRef.current, worldRef.current.objects.countries)
       landGroup.selectAll('path')
@@ -515,6 +582,22 @@ function Globe({ events, theme, onCountryClick, selectedCountry, feedGeoIPs }) {
     }
     renderLand()
 
+    // Country borders overlay (subtle, on top of satellite)
+    const bordersGroup = svg.append('g')
+    function renderBorders() {
+      bordersGroup.selectAll('*').remove()
+      if (!worldRef.current) return
+      const countries = topojson.feature(worldRef.current, worldRef.current.objects.countries)
+      bordersGroup.selectAll('path')
+        .data(countries.features)
+        .enter().append('path')
+        .attr('d', path)
+        .attr('fill', 'none')
+        .attr('stroke', 'rgba(255,255,255,0.15)')
+        .attr('stroke-width', 0.3)
+    }
+    renderBorders()
+
     // Arc lines group
     const arcsGroup = svg.append('g')
     // Dots group
@@ -526,83 +609,127 @@ function Globe({ events, theme, onCountryClick, selectedCountry, feedGeoIPs }) {
       dotsGroup.selectAll('*').remove()
       arcsGroup.selectAll('*').remove()
 
-      const recentEvents = events.slice(0, 40)
+      const recentEvents = events.slice(0, 50)
 
-      // Draw attack arc lines from source to destination
+      // Draw attack arc lines between source and destination countries
       recentEvents.forEach((evt, i) => {
         const srcPos = projection([evt.lon, evt.lat])
-        const dstPos = projection(DEST_COORDS)
+        const dstPos = projection([evt.dstLon, evt.dstLat])
         if (!srcPos || !dstPos) return
+
+        // If a country is selected, only show arcs involving that country
+        if (selectedCountry) {
+          if (evt.country !== selectedCountry && evt.dstCountry !== selectedCountry) return
+        }
 
         const color = sevColorMap[evt.severity] || theme.primary
 
-        // Great circle arc as a GeoJSON LineString
+        // Great circle arc
         const arcData = {
           type: 'LineString',
-          coordinates: [[evt.lon, evt.lat], DEST_COORDS],
+          coordinates: [[evt.lon, evt.lat], [evt.dstLon, evt.dstLat]],
         }
         const arcPath = path(arcData)
         if (!arcPath) return
 
-        // Draw the arc line
         const arc = arcsGroup.append('path')
           .attr('d', arcPath)
           .attr('fill', 'none')
           .attr('stroke', color)
-          .attr('stroke-width', 1)
+          .attr('stroke-width', selectedCountry ? 1.5 : 1)
           .attr('stroke-opacity', 0)
           .attr('stroke-dasharray', '4,3')
 
-        // Animate recent arcs (first 8 events get animated)
-        if (i < 8) {
-          const totalLen = arc.node().getTotalLength()
-          arc
-            .attr('stroke-dasharray', `${totalLen},${totalLen}`)
-            .attr('stroke-dashoffset', totalLen)
-            .attr('stroke-opacity', 0.6)
-            .transition().duration(1500).ease(d3.easeLinear)
-            .attr('stroke-dashoffset', 0)
-            .transition().duration(2000)
-            .attr('stroke-opacity', 0.1)
+        // Animate the first 12 arcs
+        if (i < 12) {
+          const totalLen = arc.node()?.getTotalLength?.()
+          if (totalLen) {
+            arc
+              .attr('stroke-dasharray', `${totalLen},${totalLen}`)
+              .attr('stroke-dashoffset', totalLen)
+              .attr('stroke-opacity', selectedCountry ? 0.8 : 0.6)
+              .transition().duration(1200 + i * 100).ease(d3.easeLinear)
+              .attr('stroke-dashoffset', 0)
+              .transition().duration(2000)
+              .attr('stroke-opacity', selectedCountry ? 0.3 : 0.1)
+          }
         } else {
-          arc.attr('stroke-opacity', 0.08).attr('stroke-dasharray', '2,4')
+          arc.attr('stroke-opacity', selectedCountry ? 0.2 : 0.08).attr('stroke-dasharray', '2,4')
         }
       })
 
-      // Draw event dots at source locations
-      recentEvents.forEach((evt) => {
-        const pos = projection([evt.lon, evt.lat])
+      // Collect unique locations (both source and destination) for dots
+      const locationMap = new Map()
+      recentEvents.forEach(evt => {
+        if (selectedCountry && evt.country !== selectedCountry && evt.dstCountry !== selectedCountry) return
+        const srcKey = `${evt.country}-src`
+        if (!locationMap.has(srcKey)) {
+          locationMap.set(srcKey, { code: evt.country, name: evt.countryName, lon: evt.lon, lat: evt.lat, severity: evt.severity, hits: 0, type: 'source' })
+        }
+        locationMap.get(srcKey).hits++
+
+        const dstKey = `${evt.dstCountry}-dst`
+        if (!locationMap.has(dstKey)) {
+          locationMap.set(dstKey, { code: evt.dstCountry, name: evt.dstCountryName, lon: evt.dstLon, lat: evt.dstLat, severity: evt.severity, hits: 0, type: 'target' })
+        }
+        locationMap.get(dstKey).hits++
+      })
+
+      // Draw dots for all active locations
+      locationMap.forEach((loc) => {
+        const pos = projection([loc.lon, loc.lat])
         if (!pos) return
-        const color = sevColorMap[evt.severity] || theme.primary
-        const isSelected = selectedCountry && evt.country === selectedCountry
+        const color = loc.type === 'target' ? theme.primary : (sevColorMap[loc.severity] || theme.primary)
+        const isSelected = selectedCountry && loc.code === selectedCountry
+        const dotSize = Math.min(2 + loc.hits * 0.5, 6)
 
         // Glow
         dotsGroup.append('circle')
           .attr('cx', pos[0]).attr('cy', pos[1])
-          .attr('r', isSelected ? 8 : 5)
+          .attr('r', isSelected ? dotSize + 4 : dotSize + 2)
           .attr('fill', color).attr('opacity', 0.15)
           .attr('filter', 'url(#dot-glow)')
 
         // Pulse ring
         dotsGroup.append('circle')
           .attr('cx', pos[0]).attr('cy', pos[1])
-          .attr('r', isSelected ? 8 : 5)
+          .attr('r', isSelected ? dotSize + 4 : dotSize + 2)
           .attr('fill', 'none').attr('stroke', color)
-          .attr('opacity', isSelected ? 0.6 : 0.3)
+          .attr('opacity', isSelected ? 0.7 : 0.3)
           .attr('stroke-width', isSelected ? 1.5 : 0.5)
           .attr('class', 'pulse-ring')
 
         // Core dot
         dotsGroup.append('circle')
           .attr('cx', pos[0]).attr('cy', pos[1])
-          .attr('r', isSelected ? 4 : 2.5)
+          .attr('r', isSelected ? dotSize + 1 : dotSize)
           .attr('fill', color)
           .attr('opacity', isSelected ? 1 : 0.85)
           .style('cursor', 'pointer')
-          .on('click', () => { if (onCountryClick) onCountryClick(evt.country) })
+          .on('click', () => {
+            if (onCountryClick) {
+              // Toggle: click same country to deselect
+              onCountryClick(selectedCountry === loc.code ? '' : loc.code)
+            }
+          })
+
+        // Selected country label
+        if (isSelected) {
+          dotsGroup.append('text')
+            .attr('x', pos[0]).attr('y', pos[1] - dotSize - 8)
+            .attr('text-anchor', 'middle')
+            .attr('fill', '#fff')
+            .attr('font-size', 10)
+            .attr('font-family', 'Poppins, sans-serif')
+            .attr('font-weight', 600)
+            .attr('stroke', 'rgba(0,0,0,0.6)')
+            .attr('stroke-width', 2)
+            .attr('paint-order', 'stroke')
+            .text(`${loc.name} (${loc.hits} hits)`)
+        }
       })
 
-      // Real feed geolocated IPs (from API)
+      // Real feed geolocated IPs
       if (feedGeoIPs && feedGeoIPs.length > 0) {
         feedGeoIPs.forEach(geo => {
           const pos = projection([geo.lon, geo.lat])
@@ -615,29 +742,18 @@ function Globe({ events, theme, onCountryClick, selectedCountry, feedGeoIPs }) {
             .attr('fill', theme.critical)
             .attr('opacity', isSelected ? 0.9 : 0.4)
             .style('cursor', 'pointer')
-            .on('click', () => { if (onCountryClick) onCountryClick(geo.countryCode) })
+            .on('click', () => {
+              if (onCountryClick) onCountryClick(selectedCountry === geo.countryCode ? '' : geo.countryCode)
+            })
         })
       }
 
-      // Destination marker (your network)
-      const dstPos = projection(DEST_COORDS)
-      if (dstPos) {
-        dotsGroup.append('circle')
-          .attr('cx', dstPos[0]).attr('cy', dstPos[1]).attr('r', 6)
-          .attr('fill', theme.primary).attr('opacity', 0.2).attr('filter', 'url(#dot-glow)')
-        dotsGroup.append('circle')
-          .attr('cx', dstPos[0]).attr('cy', dstPos[1]).attr('r', 4)
-          .attr('fill', theme.primary).attr('opacity', 0.9)
-        dotsGroup.append('circle')
-          .attr('cx', dstPos[0]).attr('cy', dstPos[1]).attr('r', 8)
-          .attr('fill', 'none').attr('stroke', theme.primary)
-          .attr('stroke-width', 1.5).attr('opacity', 0.5)
-          .attr('class', 'pulse-ring')
-      }
-
-      // Animated expanding ring on newest event
-      if (recentEvents.length > 0) {
-        const newest = recentEvents[0]
+      // Animated expanding ring on newest visible event
+      const visibleEvents = selectedCountry
+        ? recentEvents.filter(e => e.country === selectedCountry || e.dstCountry === selectedCountry)
+        : recentEvents
+      if (visibleEvents.length > 0) {
+        const newest = visibleEvents[0]
         const pos = projection([newest.lon, newest.lat])
         if (pos) {
           const color = sevColorMap[newest.severity] || theme.primary
@@ -651,6 +767,7 @@ function Globe({ events, theme, onCountryClick, selectedCountry, feedGeoIPs }) {
     renderDotsAndArcs()
 
     // Drag to rotate
+    let dragTimer = null
     const drag = d3.drag()
       .on('start', () => {
         globeCircle.style('cursor', 'grabbing')
@@ -659,20 +776,42 @@ function Globe({ events, theme, onCountryClick, selectedCountry, feedGeoIPs }) {
         const r = rotationRef.current
         rotationRef.current = [r[0] + event.dx * 0.4, Math.max(-60, Math.min(60, r[1] - event.dy * 0.4)), r[2]]
         projection.rotate(rotationRef.current)
-        renderGraticule()
+        renderBorders()
         renderLand()
         renderDotsAndArcs()
+        // Throttle canvas re-render during drag (render at low quality)
+        if (dragTimer) clearTimeout(dragTimer)
+        dragTimer = setTimeout(() => renderCanvas(100), 50)
       })
       .on('end', () => {
         globeCircle.style('cursor', 'grab')
+        // Re-render canvas at full quality on drag end
+        renderCanvas(200)
       })
 
     svg.call(drag)
 
-    return () => {}
-  }, [events, theme, selectedCountry, feedGeoIPs, ref.current?.getAttribute('data-loaded')])
+    return () => {
+      if (dragTimer) clearTimeout(dragTimer)
+    }
+  }, [events, theme, selectedCountry, feedGeoIPs, svgRef.current?.getAttribute('data-loaded'), canvasRef.current?.getAttribute('data-sat')])
 
-  return <svg ref={ref} width={size} height={size} style={{ display: 'block', margin: '0 auto' }} />
+  return (
+    <div style={{ position: 'relative', width: size, height: size, margin: '0 auto' }}>
+      <canvas
+        ref={canvasRef}
+        width={size}
+        height={size}
+        style={{ position: 'absolute', top: 0, left: 0, borderRadius: '50%' }}
+      />
+      <svg
+        ref={svgRef}
+        width={size}
+        height={size}
+        style={{ position: 'absolute', top: 0, left: 0, display: 'block' }}
+      />
+    </div>
+  )
 }
 
 // ─── BAR CHART COMPONENT ────────────────────────────────────────────────────
