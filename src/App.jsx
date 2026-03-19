@@ -1513,7 +1513,7 @@ export default function App() {
           )}
           {vulnData && !vulnLoading && (
             <span style={{ fontSize: 12, color: theme.textSecondary }}>
-              {vulnData.totalCves} CVEs found &middot; {vulnData.totalKEV.toLocaleString()} CISA KEV total
+              {vulnData.totalCves} CVEs published in last 120 days &middot; {vulnData.totalKEV.toLocaleString()} CISA KEV catalog total
             </span>
           )}
           {vulnData && (
@@ -1526,11 +1526,11 @@ export default function App() {
         {/* Overview stats cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
           {[
-            { label: 'Total CVEs', value: vulnData?.totalCves || 0, color: theme.accent },
+            { label: 'CVEs (Last 120 Days)', value: vulnData?.totalCves || 0, color: theme.accent },
             { label: 'Critical', value: sevBreak.critical, color: theme.critical },
             { label: 'High', value: sevBreak.high, color: theme.high },
             { label: 'Medium', value: sevBreak.medium, color: theme.medium },
-            { label: 'CISA KEV', value: vulnData?.totalKEV?.toLocaleString() || '0', color: theme.critical },
+            { label: 'CISA KEV Catalog', value: vulnData?.totalKEV?.toLocaleString() || '0', color: theme.critical },
           ].map((c, i) => (
             <div key={i} style={{
               background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12,
@@ -1547,7 +1547,7 @@ export default function App() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
             {/* Vendor CVE breakdown */}
             <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5 }}>CVEs by Vendor</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5 }}>CVEs by Vendor (Last 120 Days)</div>
               {vendorStats.length > 0 ? (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
@@ -1609,7 +1609,7 @@ export default function App() {
         {/* CVE Table */}
         <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            {vulnVendor ? `${VENDOR_LIST.find(v => v.id === vulnVendor)?.name || vulnVendor} CVEs` : 'Recent CVEs (All Vendors)'}
+            {vulnVendor ? `${VENDOR_LIST.find(v => v.id === vulnVendor)?.name || vulnVendor} — CVEs Published Last 120 Days` : 'CVEs Published Last 120 Days (All Vendors)'}
           </div>
           <div style={{ maxHeight: 520, overflowY: 'auto', borderRadius: 8, border: `1px solid ${theme.border}` }}>
             <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>

@@ -28,12 +28,17 @@ function cvssToSeverity(score) {
   return 'info'
 }
 
-// Fetch CVEs from NVD API v2.0
-async function fetchNVD(keyword, resultsPerPage = 20) {
+// Fetch CVEs from NVD API v2.0 — date-filtered to recent window
+async function fetchNVD(keyword, resultsPerPage = 40, daysBack = 120) {
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 15000)
-    const url = `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(keyword)}&resultsPerPage=${resultsPerPage}&keywordExactMatch`
+    // Build date range for recent CVEs only
+    const now = new Date()
+    const start = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000)
+    const pubStartDate = start.toISOString().replace(/\.\d{3}Z$/, '.000')
+    const pubEndDate = now.toISOString().replace(/\.\d{3}Z$/, '.000')
+    const url = `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(keyword)}&resultsPerPage=${resultsPerPage}&pubStartDate=${pubStartDate}&pubEndDate=${pubEndDate}`
     const res = await fetch(url, {
       signal: controller.signal,
       headers: { 'User-Agent': 'ThreatDashboard/1.0' },
@@ -114,17 +119,24 @@ export default async function handler(req, res) {
     // Fetch NVD data (if vendor specified, search that; otherwise get recent)
     let nvdCves = []
     if (nvdKeyword) {
-      nvdCves = await fetchNVD(nvdKeyword, 40)
+      nvdCves = await fetchNVD(nvdKeyword, 60)
     } else {
-      // Fetch recent CVEs for top vendors in parallel (limited set to respect rate limits)
-      const topVendors = ['fortinet', 'cisco', 'palo alto', 'juniper', 'check point', 'microsoft']
+      // Fetch recent CVEs for all tracked vendors in parallel (staggered to respect rate limits)
+      const topVendors = VENDORS.map(v => v.keywords[0])
       const results = await Promise.allSettled(
         topVendors.map((kw, i) =>
-          new Promise(resolve => setTimeout(() => resolve(fetchNVD(kw, 8)), i * 500))
+          new Promise(resolve => setTimeout(() => resolve(fetchNVD(kw, 20)), i * 400))
         )
       )
       results.forEach(r => {
         if (r.status === 'fulfilled') nvdCves.push(...r.value)
+      })
+      // Deduplicate by CVE ID
+      const seen = new Set()
+      nvdCves = nvdCves.filter(c => {
+        if (seen.has(c.id)) return false
+        seen.add(c.id)
+        return true
       })
     }
 
@@ -156,8 +168,8 @@ export default async function handler(req, res) {
       }
     })
 
-    // Sort by score descending, then date
-    enrichedCves.sort((a, b) => b.score - a.score || (b.published > a.published ? 1 : -1))
+    // Sort by published date descending (most recent first), then by score
+    enrichedCves.sort((a, b) => (b.published > a.published ? 1 : b.published < a.published ? -1 : 0) || b.score - a.score)
 
     // Vendor summary stats
     const vendorStats = {}
@@ -184,6 +196,7 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
       vendor: vendorInfo?.name || (vendor ? vendor : 'all'),
       vendors: VENDORS.map(v => ({ id: v.id, name: v.name })),
+      dateRange: '120 days',
       cves: enrichedCves,
       totalCves: enrichedCves.length,
       totalKEV: kevData.length,
